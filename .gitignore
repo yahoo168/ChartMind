@@ -1,0 +1,7 @@
+.env
+.ipynb_checkpoints/
+test.ipynb/
+images/
+temp_store/
+__pycache__/
+venv/
