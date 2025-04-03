@@ -1,40 +1,46 @@
-import os
 from fastapi import FastAPI, Request, HTTPException, APIRouter
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
-
-from pydantic import BaseModel
-
-from app.models.user_models import UserModel, UserRegistrationModel
-from app.services.linebot_services import handle_line_webhook
+from app.models.user_models import UserRegistrationModel, UserLoginModel
+from app.services.user_services import UserAuthService
 from app.utils.logging_config import logger
-from app.utils.mongodb_utils import MongoDB
+# from app.utils.mongodb_utils import MongoDB
+from app.exceptions.user_exceptions import UserAlreadyExistsError, UserCreationError, InvalidCredentialsError
 
 router = APIRouter()
 
-@router.get("/test")
-async def test():
-    logger.info("測試 API 呼叫")
-    return JSONResponse(status_code=200, content={"message": "API 測試成功"})
+@router.post("/login")
+async def login(user: UserLoginModel):
+    try:
+        user_service = UserAuthService()
+        result = await user_service.login_user(username=user.username, password=user.password)
+                
+        return JSONResponse(status_code=200, content={
+            "access_token": result["access_token"],
+            "token_type": "bearer",
+            "user_id": result["user_id"],
+        })
+    except InvalidCredentialsError:
+        raise HTTPException(status_code=400, detail="帳號密碼錯誤")
+    except Exception as e:
+        logger.error(f"登录过程中发生错误: {str(e)}")
+        raise HTTPException(status_code=500, detail="服务器错误，请稍后重试")
 
 @router.post("/register")
 async def register(user: UserRegistrationModel):
-    db = MongoDB.get_db()
-    existing_user = await db.users.find_one({"username": user.username})
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    await db.users.insert_one(user.model_dump())
-    return JSONResponse(status_code=201, content={"message": "User registered"})
-
-@router.post("/login")
-async def login(user: UserModel):
-    db = MongoDB.get_db()
-    db_user = await db.users.find_one({"email": user.email, "password": user.password})
-    if not db_user:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    return JSONResponse(status_code=200, content={"message": "Login successful"})
-
-# @app.get("/images")
-# async def get_images():
-#     images = await db.images.find().to_list(100)
-#     return JSONResponse(status_code=200, content=images)
+    try:
+        user_service = UserAuthService()
+        await user_service.create_user_from_website(user)
+        return JSONResponse(status_code=201, content={"message": "注册成功！"})
+    except UserAlreadyExistsError:
+        raise HTTPException(status_code=400, detail="该用户名已被注册")
+    except UserCreationError as e:
+        logger.warn(f"UserCreationError: {str(e)}")
+        raise HTTPException(status_code=400, detail="注册失败，请稍后重试")
+    except Exception as e:
+        logger.info(e)
+        raise HTTPException(status_code=500, detail="服务器错误，请稍后重")
+    
+# @router.get("/test")
+# async def test():
+#     logger.info("測試 API 呼叫")
+#     return JSONResponse(status_code=200, content={"message": "API 測試成功"})

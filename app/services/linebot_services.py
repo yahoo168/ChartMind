@@ -8,11 +8,10 @@ from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, ImageMessage, TextMessage, TextSendMessage
 
 from app.services.upload_services import upload_image
-from app.utils.line_utils import download_image_message
-from app.utils.mongodb_utils import MongoDB
-from app.utils.logging_config import logger
+from app.services.user_services import UserAuthService
 
-from app.daos.user_daos import UserDAO
+from app.utils.line_utils import download_image_message
+from app.utils.logging_config import logger
 
 load_dotenv()
 
@@ -48,6 +47,18 @@ def handle_text_message(event):
 
 async def process_text_message(line_id, text, reply_token):
     user_status = await check_and_handle_user(line_id)
+    if user_status["is_new_user"]:
+        user_data = user_status["user_data"]
+        username, password = user_data["username"], user_data["password"]
+        # Add auto-registration information to the reply
+        reply_text += f"\n\n ✅ 用户初次登入，已自動註冊\n 帳號: {username}\n 帳號: {password} 連結: {None}"
+        
+        # Reply to the user with the prepared message
+        # 回覆使用者
+        line_bot_api.reply_message(
+            reply_token,
+            TextSendMessage(text=reply_text)
+        )
 
 async def process_image_message(image_path, line_id, reply_token):
     try:
@@ -79,12 +90,13 @@ async def process_image_message(image_path, line_id, reply_token):
     )
 
 async def check_and_handle_user(line_id):
-    user_data = await UserDAO().find_user(line_id=line_id) #使用line_id 查找用戶是否存在
+    user_service = UserAuthService()
+    user_data = await user_service.get_user(by="line_id", value=line_id) #使用line_id 查找用戶是否存在
     if user_data:
         return {"user_data": user_data, "is_new_user": False}
     else:
         logger.info(f"用户 {line_id} 不存在，进行注册。")
-        user_data = await UserDAO().create_user_from_line(line_id)
+        user_data = await user_service.create_user_from_line(line_id)
         
         return {"user_data": user_data, "is_new_user": True}
 

@@ -9,7 +9,11 @@ class MongoDB:
     @classmethod
     async def connect_db(cls, db_name: str = "default_db"):
         if cls.client is None:
-            cls.client = AsyncIOMotorClient(os.getenv("MONGODB_URI"))
+            cls.client = AsyncIOMotorClient(
+                os.getenv("MONGODB_URI"),
+                tls=True,  # 启用 TLS/SSL
+                tlsAllowInvalidCertificates=True  # 如果使用自签名证书，临时忽略证书验证
+            )
         cls.db = cls.client[db_name]  # 动态选择数据库
 
     @classmethod
