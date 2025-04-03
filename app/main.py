@@ -7,10 +7,10 @@ from app.utils.mongodb_utils import MongoDB
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 启动时连接数据库
-    await MongoDB.connect_db()
+    await MongoDB.connect_client()
     yield
     # 关闭时断开数据库连接
-    await MongoDB.close_db()
+    await MongoDB.close_client()
 
 app = FastAPI(title="ChartMind", lifespan=lifespan)
 app.include_router(api_router, prefix="/api")

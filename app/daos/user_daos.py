@@ -1,11 +1,19 @@
-from app.utils.mongodb_utils import MongoDB
 from app.models.user_models import UserRegistrationModel
+from app.daos.base_daos import BaseDAO, ensure_initialized
 
-class UserDAO:
+class UserDAO(BaseDAO):
     def __init__(self):
-        db = MongoDB.get_db("Account")
-        self.collection = db["Users"]
+        super().__init__()
+        self.database_name = "Account"
+        self.collection_name = "Users"
 
+    @ensure_initialized
+    async def create_user(self, user_data: UserRegistrationModel):
+        if isinstance(user_data, UserRegistrationModel):
+            user_data = user_data.model_dump()
+        await self.collection.insert_one(user_data)
+    
+    @ensure_initialized
     async def find_user(self, username: str = None, user_id: str = None, line_id: str = None, google_id: str = None, **kwargs):
         query = {}
         if username:
@@ -23,6 +31,7 @@ class UserDAO:
                 query[f'external_ids.{key}'] = value
         return await self.collection.find_one(query)
 
+    @ensure_initialized
     async def create_user(self, user_data: UserRegistrationModel):
         if isinstance(user_data, UserRegistrationModel):
             user_data = user_data.model_dump()

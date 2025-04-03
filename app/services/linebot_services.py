@@ -7,7 +7,7 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, ImageMessage, TextMessage, TextSendMessage
 
-from app.services.upload_services import upload_image
+from app.services.image_services import ImageService
 from app.services.user_services import UserAuthService
 
 from app.utils.line_utils import download_image_message
@@ -47,11 +47,12 @@ def handle_text_message(event):
 
 async def process_text_message(line_id, text, reply_token):
     user_status = await check_and_handle_user(line_id)
+    reply_text = "收到您的訊息：" + text  # 初始化 reply_text 變數
     if user_status["is_new_user"]:
         user_data = user_status["user_data"]
         username, password = user_data["username"], user_data["password"]
         # Add auto-registration information to the reply
-        reply_text += f"\n\n ✅ 用户初次登入，已自動註冊\n 帳號: {username}\n 帳號: {password} 連結: {None}"
+        reply_text += f"\n\n ✅ 用户初次登入，已自動註冊\n 帳號: {username}\n 密碼: {password} 連結: {None}"
         
         # Reply to the user with the prepared message
         # 回覆使用者
@@ -66,9 +67,9 @@ async def process_image_message(image_path, line_id, reply_token):
         user_status = await check_and_handle_user(line_id)
         user_id = str(user_status["user_data"]["_id"])
         # Upload image to Cloudflare R2 & MongoDB
-        image_url = await upload_image(image_path, user_id)
+        image_url = await ImageService().upload_image(image_path, user_id)
         # Success message with image URL
-        reply_text = f"✅ 已收到圖表！\n\n📁 🌐 圖片連結：{image_url}"
+        reply_text = f"✅ 已收到圖表！\n\n📁 �� 圖片連結：{image_url}"
     
     except Exception as e:
         # Log the error and prepare failure message
