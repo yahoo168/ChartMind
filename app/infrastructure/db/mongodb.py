@@ -1,9 +1,8 @@
+import os, logging
 from motor.motor_asyncio import AsyncIOMotorClient
-import os
 from typing import Optional
-import logging
 
-class MongoDB:
+class MongodbClient:
     client: Optional[AsyncIOMotorClient] = None 
     db = None
 

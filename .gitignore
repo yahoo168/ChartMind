@@ -1,7 +1,8 @@
 .env
 .ipynb_checkpoints/
-test.ipynb/
 images/
 temp_store/
 __pycache__/
 venv/
+test.ipynb
+test2.ipynb

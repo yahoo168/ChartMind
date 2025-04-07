@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request, HTTPException, Body
-from app.services.linebot_services import handle_line_webhook
-from app.services.user_services import UserImageService
-from app.utils.logging_config import logger
+from backend.app.infrastructure.external.linebot_services import handle_line_webhook
+from backend.app.domain.entities.user import UserImageService
+from app.utils.logging_utils import logger
 from pydantic import BaseModel
 
 router = APIRouter()

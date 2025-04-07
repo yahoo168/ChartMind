@@ -1,8 +1,8 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.api_v1 import api_router
-from app.utils.mongodb_utils import MongoDB
+from app.interfaces.api_v1 import api_router
+from app.infrastructure.db.mongodb import MongoDB
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

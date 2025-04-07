@@ -1,8 +1,8 @@
 from fastapi import FastAPI, Request, HTTPException, APIRouter
 from fastapi.responses import JSONResponse
-from app.models.user_models import UserRegistrationModel, UserLoginModel
-from app.services.user_services import UserAuthService
-from app.utils.logging_config import logger
+from app.infrastructure.models.user_models import UserRegistrationModel, UserLoginModel
+from backend.app.domain.entities.user_services import UserAuthService
+from app.utils.logging_utils import logger
 # from app.utils.mongodb_utils import MongoDB
 from app.exceptions.user_exceptions import UserAlreadyExistsError, UserCreationError, InvalidCredentialsError
 

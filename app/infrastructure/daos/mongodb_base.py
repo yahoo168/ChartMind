@@ -1,7 +1,9 @@
-from app.utils.mongodb_utils import MongoDB
 import functools
 import asyncio
 import logging
+
+from bson import ObjectId
+from app.infrastructure.db.mongodb import MongodbClient
 
 def ensure_initialized(func):
     """裝飾器：確保DAO已初始化後再執行方法"""
@@ -11,7 +13,7 @@ def ensure_initialized(func):
         return await func(self, *args, **kwargs)
     return wrapper
 
-class BaseDAO:
+class MongodbBaseDAO:
     _instances = {}  # 用於存儲不同子類的實例
     _init_lock = asyncio.Lock()  # 用於初始化的鎖
 
@@ -46,7 +48,7 @@ class BaseDAO:
                             raise TypeError(f"collection_name must be a string, got {type(self.collection_name)}")
                         
                         # 獲取數據庫連接
-                        client = await MongoDB.get_client()
+                        client = await MongodbClient.get_client()
                         db = client[self.database_name]
                         self.collection = db[self.collection_name]
                         
@@ -55,3 +57,25 @@ class BaseDAO:
                     except Exception as e:
                         logging.error(f"Failed to initialize {self.__class__.__name__}: {str(e)}")
                         raise
+    
+    def convert_objectid_to_str(self, data):
+        """將文檔中的ObjectId轉換為字符串"""
+        if isinstance(data, dict):
+            # 處理字典
+            result = {}
+            for key, value in data.items():
+                if key == '_id' and isinstance(value, ObjectId):
+                    result[key] = str(value)
+                elif isinstance(value, ObjectId):
+                    result[key] = str(value)
+                elif isinstance(value, (dict, list)):
+                    result[key] = self.convert_objectid_to_str(value)
+                else:
+                    result[key] = value
+            return result
+        elif isinstance(data, list):
+            # 處理列表
+            return [self.convert_objectid_to_str(item) for item in data]
+        else:
+            # 其他類型直接返回
+            return data
