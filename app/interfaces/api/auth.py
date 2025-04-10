@@ -1,9 +1,9 @@
-from fastapi import FastAPI, Request, HTTPException, APIRouter
+from fastapi import HTTPException, APIRouter
 from fastapi.responses import JSONResponse
-from app.models.user_models import UserRegistrationModel, UserLoginModel
-from app.domain.entities.user import UserAuthService
+
+from app.infrastructure.models.user_models import UserRegistrationModel, UserLoginModel
+from app.service.user_service import UserAuthService
 from app.utils.logging_utils import logger
-# from app.utils.mongodb_utils import MongoDB
 from app.exceptions.user_exceptions import UserAlreadyExistsError, UserCreationError, InvalidCredentialsError
 
 router = APIRouter()
@@ -29,13 +29,16 @@ async def login(user: UserLoginModel):
 async def register(user: UserRegistrationModel):
     try:
         user_service = UserAuthService()
-        await user_service.create_user_from_website(user)
+        await user_service.register_user_from_website(user)
         return JSONResponse(status_code=201, content={"message": "注册成功！"})
+    
     except UserAlreadyExistsError:
         raise HTTPException(status_code=400, detail="该用户名已被注册")
+    
     except UserCreationError as e:
         logger.warn(f"UserCreationError: {str(e)}")
         raise HTTPException(status_code=400, detail="注册失败，请稍后重试")
+    
     except Exception as e:
         logger.info(e)
         raise HTTPException(status_code=500, detail="服务器错误，请稍后重")

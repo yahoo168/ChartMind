@@ -11,8 +11,8 @@ class R2Storage:
         self.access_key = os.getenv("R2_ACCESS_KEY")
         self.secret_key = os.getenv("R2_SECRET_KEY")
         self.endpoint_url = os.getenv("R2_ENDPOINT")
-        self.bucket = "chartmind-images"  # 設定的 Bucket 名稱
-        self.public_base_url = "https://r2-image-worker.a86305394.workers.dev"  # Cloudflare Workers設定的 CDN URL
+        self.bucket = os.getenv("R2_BUCKET", "chartmind-images")  # 从环境变量获取bucket名称
+        self.public_base_url = os.getenv("R2_PUBLIC_URL", "https://r2-image-worker.a86305394.workers.dev")  # 从环境变量获取CDN URL
         
         # 初始化 S3 client
         self.s3 = boto3.client(

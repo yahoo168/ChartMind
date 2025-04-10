@@ -11,6 +11,10 @@ class UserLoginModel(BaseModel):
 class UserRegistrationModel(BaseModel):
     username: str = Field(min_length=5, max_length=10)
     password: str = Field(min_length=5, max_length=10)
+    external_ids: Dict[str, Optional[str]] = {
+        "line_id": None,
+        "google_id": None
+    }
 
 # class UserModel(BaseModel):
 #     # id: Optional[ObjectId] = Field(alias='_id')

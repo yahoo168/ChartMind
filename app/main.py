@@ -2,15 +2,15 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.interfaces.api_v1 import api_router
-from app.infrastructure.db.mongodb import MongoDB
+from app.infrastructure.db.mongodb import MongodbClient
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 启动时连接数据库
-    await MongoDB.connect_client()
+    await MongodbClient.connect_client()
     yield
     # 关闭时断开数据库连接
-    await MongoDB.close_client()
+    await MongodbClient.close_client()
 
 app = FastAPI(title="ChartMind", lifespan=lifespan)
 app.include_router(api_router, prefix="/api")

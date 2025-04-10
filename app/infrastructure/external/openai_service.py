@@ -39,10 +39,10 @@ class OpenAIService:
         """
         prompt = """請分析這張圖片，並提供以下資訊：
         1. 詳細的圖片描述，約150字
-        2. 5個相關tag
+        2. 5個相關label
         3. 一個簡短的title
 
-        請以JSON格式回應，包含三個鍵：summary、tags（陣列）和title。"""
+        請以JSON格式回應，包含三個鍵：summary、labels（Array）和title。"""
 
         try:
             response = self.client.chat.completions.create(
@@ -86,7 +86,7 @@ class OpenAIService:
 
             # 獲取各個部分
             summary = analysis.get("summary", "")
-            tags = analysis.get("tags", [])
+            labels = analysis.get("labels", [])
             title = analysis.get("title", "")
             
             # 生成描述的向量表示
@@ -95,7 +95,7 @@ class OpenAIService:
             return {
                 "summary": summary,
                 "summary_vector": summary_vector,
-                "tags": tags,
+                "labels": labels,
                 "title": title
             }
         except Exception as e:

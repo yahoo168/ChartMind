@@ -9,10 +9,9 @@ class UserDAO(MongodbBaseDAO):
         self.collection_name = "Users"
 
     @ensure_initialized
-    async def create_user(self, user_data: UserRegistrationModel):
-        if isinstance(user_data, UserRegistrationModel):
-            user_data = user_data.model_dump()
-        await self.collection.insert_one(user_data)
+    async def create_user(self, user_data: dict):
+        result = await self.collection.insert_one(user_data)
+        return result.inserted_id
     
     @ensure_initialized
     async def find_user(self, username: str = None, user_id: str = None, line_id: str = None, google_id: str = None):
@@ -27,4 +26,4 @@ class UserDAO(MongodbBaseDAO):
             query['external_ids.google_id'] = google_id
         
         data = await self.collection.find_one(query)
-        return self.convert_objectid_to_str(data)
+        return data

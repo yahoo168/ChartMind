@@ -16,8 +16,16 @@ class ImageDAO(MongodbBaseDAO):
     @ensure_initialized
     async def insert_one(self, image_data: ImageModel):
         result = await self.collection.insert_one(image_data.model_dump())
-        return str(result.inserted_id)
+        return result.inserted_id
     
+    @ensure_initialized
+    async def update_is_processed(self, image_id: str, is_processed: bool):
+        result = await self.collection.update_one(
+            {"_id": ObjectId(image_id)},
+            {"$set": {"description.is_processed": is_processed}}
+        )
+        return result.modified_count
+
     @ensure_initialized
     async def update_description(self, image_id: str, description: ImageDescriptionModel):
         result = await self.collection.update_one(
@@ -39,7 +47,7 @@ class ImageDAO(MongodbBaseDAO):
         try:
             result = await self.collection.update_one(
                 {"_id": ObjectId(image_id)},
-                {"$set": {"description.tags": labels}}
+                {"$set": {"description.labels": labels}}
             )
             return result.modified_count
         except Exception as e:

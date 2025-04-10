@@ -1,7 +1,6 @@
 import os
 from google.cloud import documentai_v1 as documentai
 from google.api_core.client_options import ClientOptions
-import requests
 import aiohttp
 import aiofiles
 

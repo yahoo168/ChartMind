@@ -9,7 +9,7 @@ class MongodbClient:
     @classmethod
     async def connect_client(cls):
         if cls.client is None:
-            mongodb_uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
+            mongodb_uri = os.getenv("MONGODB_URI")
             cls.client = AsyncIOMotorClient(mongodb_uri)
             logging.info("MongoDB client connected")
 
