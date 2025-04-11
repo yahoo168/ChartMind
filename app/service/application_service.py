@@ -25,16 +25,20 @@ class UserMaterialsUploadService:
                 logger.error(f"删除本地文件失败: {local_file_path}, 错误: {str(e)}")
         
         return image_id
-
+    
     async def upload_text(self, text: str, user_id: str, source: str):
         """上传文本到R2存储并将元数据保存到数据库"""
         text_id = await self.text_management_service.upload_text(text, user_id, source)
         return text_id
-    
-    async def upload_pdf(self, file_name: str, file_path: str, user_id: str, source: str):
-        """上传PDF文件到R2存储并将元数据保存到数据库"""
-        pdf_id = await self.file_management_service.upload_pdf(file_name, file_path, user_id, source)
-        return pdf_id
+
+    async def upload_file(self, file_ext: str, file_name: str, file_path: str, user_id: str, source: str):
+        """上传文件到R2存储并将元数据保存到数据库"""
+        if file_ext == ".pdf":
+            file_id = await self.file_management_service.upload_file(file_name, file_path, user_id, source, "pdf")
+        else:
+            raise ValueError(f"不支持的文件类型: {file_ext}")
+        return file_id
+
 
 class UserMaterialsRetrievalService:
     """用户材料检索服务，处理与用户材料相关的应用层逻辑"""

@@ -1,5 +1,5 @@
-from app.infrastructure.daos.label import ImageLabelDAO
-from app.infrastructure.external.openai_service import OpenAIService
+from app.infrastructure.daos.label_daos import LabelDAO
+from app.infrastructure.external.cloudflare_ai_service import CloudflareAIService
 from app.infrastructure.models.label_models import LabelModel
 from app.utils.logging_utils import logger
 from app.utils.math_utils import cosine_similarity
@@ -9,12 +9,24 @@ class LabelManagementService:
     """标签管理服务，处理标签相关的核心业务逻辑"""
     
     def __init__(self):
-        self.dao = ImageLabelDAO()
-        self.openai_service = OpenAIService()
+        self.dao = LabelDAO()
+        self.llm_service = CloudflareAIService()
+    
+    async def is_label_exists(self, user_id: str, label_name: str):
+        """检查标签是否存在"""
+        return await self.dao.is_label_exists(user_id, label_name)
     
     async def create_label(self, user_id: str, label_name: str):
         """创建标签"""
-        vector = await self.openai_service.get_embedding(label_name)
+        if len(label_name) >= 50:
+            logger.info(f"标签名称过长: {label_name}，限制为50个字符")
+            return None
+        
+        if await self.is_label_exists(user_id, label_name):
+            logger.info(f"标签已存在: {label_name}")
+            return None
+        
+        vector = await self.llm_service.get_embedding(label_name)
         
         label = LabelModel(
             name=label_name,

@@ -1,4 +1,4 @@
-from app.infrastructure.daos.user import UserDAO
+from app.infrastructure.daos.user_daos import UserDAO
 from app.utils.auth_utils import generate_random_string, create_access_token, hash_password, verify_password
 from app.exceptions.user_exceptions import UserAlreadyExistsError, InvalidCredentialsError, UserCreationError
 

@@ -2,7 +2,7 @@ from bson import ObjectId
 from app.infrastructure.daos.mongodb_base import MongodbBaseDAO, ensure_initialized
 from app.infrastructure.models.label_models import LabelModel
 
-class ImageLabelDAO(MongodbBaseDAO):
+class LabelDAO(MongodbBaseDAO):
     def __init__(self):
         super().__init__()
         self.database_name = "Materials"
@@ -21,6 +21,10 @@ class ImageLabelDAO(MongodbBaseDAO):
     @ensure_initialized
     async def count_labels_by_user_id(self, user_id: str):
         return await self.collection.count_documents({"user_id": ObjectId(user_id)})
+    
+    @ensure_initialized
+    async def is_label_exists(self, user_id: str, label_name: str):
+        return await self.collection.count_documents({"user_id": ObjectId(user_id), "name": label_name}) > 0
     
     # @ensure_initialized
     # async def find_label_by_id(self, label_id: str):

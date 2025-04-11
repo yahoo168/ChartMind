@@ -22,7 +22,10 @@ class ImageDAO(MongodbBaseDAO):
     async def update_is_processed(self, image_id: str, is_processed: bool):
         result = await self.collection.update_one(
             {"_id": ObjectId(image_id)},
-            {"$set": {"description.is_processed": is_processed}}
+            {"$set": {"metadata.is_processed": is_processed,
+                      "metadata.processed_timestamp": datetime.now(timezone.utc),
+                      "metadata.updated_timestamp": datetime.now(timezone.utc)
+                      }}
         )
         return result.modified_count
 
@@ -59,24 +62,12 @@ class ImageDAO(MongodbBaseDAO):
         try:
             result = await self.collection.update_one(
                 {"_id": ObjectId(image_id)},
-                {"$set": {"description.gpt_summary": summary}}
+                {"$set": {"description.summary": summary}}
             )
             return result.modified_count
         except Exception as e:
             logging.error(f"更新GPT摘要时出错 {image_id}: {str(e)}")
             return 0
-    
-
-    # @ensure_initialized
-    # async def find_image_by_id(self, image_id: str):
-    #     try:
-    #         image = await self.collection.find_one({"_id": ObjectId(image_id)})
-    #         if image:
-    #             image['_id'] = str(image['_id'])
-    #         return image
-    #     except Exception as e:
-    #         logging.error(f"Error getting image {image_id}: {str(e)}")
-    #         return None
     
     @ensure_initialized
     async def find_images_by_label(self, label_id: str, user_id: str = None):
@@ -108,7 +99,7 @@ class ImageDAO(MongodbBaseDAO):
     @ensure_initialized
     async def find_unprocessed_images(self):
         try:
-            cursor = self.collection.find({"description.is_processed": False})
+            cursor = self.collection.find({"metadata.is_processed": False})
             images = await cursor.to_list(length=None)
             return images
         except Exception as e:
@@ -119,8 +110,8 @@ class ImageDAO(MongodbBaseDAO):
     async def update_processed_status(self, image_id: str, is_processed: bool):
         result = await self.collection.update_one(
             {"_id": ObjectId(image_id)},
-            {"$set": {"description.is_processed": is_processed, 
-                      "description.processed_timestamp": datetime.now(timezone.utc)}}
+            {"$set": {"metadata.is_processed": is_processed, 
+                      "metadata.processed_timestamp": datetime.now(timezone.utc)}}
         )
         return result.modified_count
 

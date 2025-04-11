@@ -1,13 +1,14 @@
 import os
-from datetime import datetime, timezone
 from bson import ObjectId
+import asyncio
 
 from app.infrastructure.external.GoogleDocumentAI_service import GoogleDocumentAIService
-from app.infrastructure.external.openai_service import OpenAIService
+from app.infrastructure.external.cloudflare_ai_service import CloudflareAIService
 from app.utils.logging_utils import logger
 from app.service.label_service import LabelApplicationService
-from app.infrastructure.daos.image import ImageDAO
+from app.infrastructure.daos.image_daos import ImageDAO
 from app.infrastructure.models.image_models import ImageDescriptionModel, ImageModel
+from app.infrastructure.models.base_models import MetadataModel
 from app.infrastructure.db.r2 import R2Storage
 
 class ImageManagementService:
@@ -36,30 +37,33 @@ class ImageManagementService:
         """更新图像处理状态"""
         await self.image_dao.update_is_processed(image_id, is_processed)
     
-    async def upload_image(self, local_file_path: str, user_id: str, source: str) -> str:
+    async def upload_image(self, file_path: str, user_id: str, source: str) -> str:
         """上传图像到R2存储并将元数据保存到数据库"""
-        upload_result = self.r2_storage.upload(local_file_path, user_id)
+        upload_result = self.r2_storage.upload(file_path, user_id)
         file_url = upload_result["url"]
         object_key = upload_result["object_key"]
+        result = None
         
         try:
             image_data = ImageModel(
                 user_id=ObjectId(user_id),
-                file_name=os.path.basename(file_url),
                 file_url=file_url, 
-                file_size=os.path.getsize(local_file_path),
-                content_type="image/jpg", # TODO: 根据文件类型确定
-                created_timestamp=datetime.now(timezone.utc),
-                source=source,
+                file_size=os.path.getsize(file_path),
+                file_type=os.path.splitext(file_path)[1],
+                metadata=MetadataModel(source=source),
                 description=ImageDescriptionModel(),
             )
             result = await self.image_dao.insert_one(image_data)
             return result
         
         except Exception as e:
-            # 数据库插入失败，删除已上传到R2的文件
-            logger.error(f"Mongodb数据插入失败，删除R2文件: {object_key}, 错误: {str(e)}")
+            # 上傳失敗時，清理已创建的资源，並删除已上传到R2的文件
+            logger.error(f"删除R2文件: {object_key}, 错误: {str(e)}")
             self.r2_storage.delete(object_key)
+            
+            if result:
+                logger.error(f"删除已创建的图像记录: {result}")
+                await self.image_dao.delete_one(result)
             raise e
         
 
@@ -68,7 +72,7 @@ class ImageAnalysisService:
     
     def __init__(self):
         self.google_document_service = GoogleDocumentAIService()
-        self.openai_service = OpenAIService(model="gpt-4o-mini")
+        self.llm_service = CloudflareAIService()
         self.image_management_service = ImageManagementService()
         self.label_application_service = LabelApplicationService()
     
@@ -81,26 +85,56 @@ class ImageAnalysisService:
             logger.error(f"获取 OCR 文本时出错: {e}")
             return None
     
-    async def _get_image_llm_analysis(self, image_url: str):
+    async def _get_image_llm_analysis(self, image_url: str, language: str = "zh-TW"):
         """获取图像分析结果"""
         try:
-            result = await self.openai_service.analyze_image(image_url)
-            return result
+            if language == "zh-TW":
+                prompt = """請分析這張圖片，並提供以下資訊：
+                    1. 詳細的圖片描述，約150字
+                    2. 5個相關label
+                    3. 一個簡短的title
+                    請以JSON格式回應，包含三個鍵：summary、labels（Array）和title。
+                    請確保所有回應內容均使用繁體中文。
+                    """
+            else:
+                prompt = """Please analyze this image and provide the following information:
+                    1. Detailed image description, about 150 words
+                    2. 5 related labels
+                    3. A concise title
+                    Please return the response in JSON format, containing three keys: summary, labels (Array), and title.
+                    Please ensure all content is in English.
+                    """
+
+            llm_result = await self.llm_service.analyze_image(image_url, prompt, json_response=True)
+            
+            title = llm_result.get("title", '')
+            summary = llm_result.get("summary", '')
+            labels = llm_result.get("labels", [])
+            summary_vector = await self.llm_service.get_embedding(summary)
+            
+            return {
+                "title": title,
+                "summary": summary,
+                "summary_vector": summary_vector,
+                "labels": labels
+            }
+        
         except Exception as e:
             logger.error(f"获取图像摘要时出错: {e}")
-            return None
+            return {}
     
     async def get_image_analysis(self, image_url: str):
         """处理图像分析，返回分析结果但不更新数据库"""
         ocr_text = await self._get_image_ocr_text(image_url)
-        image_analysis = await self._get_image_llm_analysis(image_url)
+        
+        llm_analysis_result = await self._get_image_llm_analysis(image_url)
         
         return {
-            "title": image_analysis.get("title", ''),
-            "summary": image_analysis.get("summary", ''),
-            "summary_vector": image_analysis.get("summary_vector", []),
+            "title": llm_analysis_result.get("title", ''),
+            "summary": llm_analysis_result.get("summary", ''),
+            "summary_vector": llm_analysis_result.get("summary_vector", []),
             "ocr_text": ocr_text,
-            "labels": image_analysis.get("labels", [])
+            "labels": llm_analysis_result.get("labels", [])
         }
     
     async def get_image_description(self, image: dict):
@@ -119,7 +153,7 @@ class ImageAnalysisService:
         
         description = ImageDescriptionModel(
             ocr_text=image_analysis.get("ocr_text", ''),
-            title=image_analysis.get("title", ''),
+            auto_title=image_analysis.get("title", ''),
             summary=image_analysis.get("summary", ''),
             summary_vector=summary_vector,
             labels=matched_label_ids
@@ -128,21 +162,49 @@ class ImageAnalysisService:
     
     async def process_images(self):
         """处理所有未处理的图像"""
-        logger.info("开始处理图像")
-        unprocessed_images = await self.image_management_service.find_unprocessed_images()
-        logger.info(f"未处理的图像数量: {len(unprocessed_images)}")
-        processed_image_ids = []
-        for image in unprocessed_images:
-            try:
-                description = await self.get_image_description(image)
-                
-                await self.image_management_service.update_description(image["_id"], description)
-                await self.image_management_service.update_is_processed(image["_id"], True)
-                processed_image_ids.append(image["_id"])
-                
-                logger.info(f"已更新图像处理状态 ID: {image['_id']}")
-            except Exception as e:
-                logger.error(f"处理图像时出错 ID: {image['_id']}, 错误: {str(e)}")
-        logger.info(f"已成功处理图像: {len(processed_image_ids)}")
-        return processed_image_ids
+        try:
+            logger.info("开始处理图像")
+            unprocessed_images = await self.image_management_service.find_unprocessed_images()
+            logger.info(f"未处理的图像数量: {len(unprocessed_images)}")
+            
+            if not unprocessed_images:
+                logger.info("没有未处理的图像")
+                return []
+            
+            # 创建任务列表以并行处理图像
+            tasks = []
+            for image in unprocessed_images:
+                task = self._process_single_image(image)
+                tasks.append(task)
+            
+            # 并行执行所有任务
+            processed_results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # 过滤出成功处理的图像ID
+            processed_image_ids = [img_id for img_id in processed_results if img_id and not isinstance(img_id, Exception)]
+            
+            logger.info(f"已成功处理图像: {len(processed_image_ids)}/{len(unprocessed_images)}")
+            return processed_image_ids
+            
+        except Exception as e:
+            logger.error(f"批量处理图像时出错: {str(e)}")
+            return []
+    
+    async def _process_single_image(self, image: dict):
+        """处理单个图像"""
+        try:
+            image_id = image["_id"]
+            logger.info(f"开始处理图像 ID: {image_id}")
+            
+            description = await self.get_image_description(image)
+            
+            await self.image_management_service.update_description(image_id, description)
+            await self.image_management_service.update_is_processed(image_id, True)
+            
+            logger.info(f"已完成图像处理 ID: {image_id}")
+            return image_id
+            
+        except Exception as e:
+            logger.error(f"处理图像时出错 ID: {image['_id']}, 错误: {str(e)}")
+            return None
 

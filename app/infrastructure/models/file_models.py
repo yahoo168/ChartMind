@@ -2,8 +2,10 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 from typing import List, Optional
 from bson import ObjectId
+from app.infrastructure.models.base_models import MetadataModel
 
 class FileDescriptionModel(BaseModel):
+    auto_title: str = ''
     summary: str = ''
     summary_vector: List[float] = []
     labels: List[ObjectId] = []
@@ -15,20 +17,19 @@ class FileDescriptionModel(BaseModel):
     }
 
 class FileModel(BaseModel):
-    title: str = ''
-    url: str = ''
-    file_type: str
     user_id: ObjectId
-    source: str
+    # File
+    title: str = ''
+    file_url: str = ''
+    file_type: str
+    file_size: int
+    
     description: FileDescriptionModel = FileDescriptionModel()
-    created_timestamp: datetime = datetime.now(timezone.utc)
-    updated_timestamp: datetime = datetime.now(timezone.utc)
-    is_deleted: bool = False
-    is_processed: bool = False
-    processed_timestamp: Optional[datetime] = None
+    metadata: MetadataModel = MetadataModel()
     # Link
     child_texts: List[ObjectId] = []
     child_images: List[ObjectId] = []
+    
     model_config = {
         "arbitrary_types_allowed": True,
         "json_encoders": {

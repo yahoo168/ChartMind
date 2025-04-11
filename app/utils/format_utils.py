@@ -13,23 +13,6 @@ def convert_objectid_to_str(obj):
         return [convert_objectid_to_str(item) for item in obj]
     return obj
 
-def extract_urls_from_text(text):
-    """
-    從輸入的字串中擷取所有網址連結
-
-    參數:
-        text (str): 輸入字串
-
-    回傳:
-        list: 包含所有找到的 URL 字串
-    """
-    # URL regex pattern (支援 http, https, www)
-    url_pattern = re.compile(
-        r'(https?://[^\s]+|www\.[^\s]+)',
-        re.IGNORECASE
-    )
-    return url_pattern.findall(text)
-
 def clean_text(text: str) -> str:
     """
     清洗文本，去除特殊符號和多餘的空白
@@ -125,3 +108,28 @@ def extract_pdf_content(pdf_path: str, output_dir: str = None):
             
     doc.close()
     return pages_text
+
+def count_words(text):
+    """
+    计算文本中的单词数，中文一个字算1，英文一个单词算1
+    
+    参数:
+        text (str): 需要计算单词数的文本
+    
+    返回:
+        int: 单词总数
+    """
+    if not text or not isinstance(text, str):
+        return 0
+    
+    # 分割英文单词
+    text_with_spaces = re.sub(r'[^\w\s]', ' ', text)
+    
+    # 分割英文单词
+    english_words = [word for word in text_with_spaces.split() if re.match(r'^[a-zA-Z0-9]+$', word)]
+    english_count = len(english_words)
+    
+    # 计算中文字符数
+    chinese_count = sum(1 for char in text if '\u4e00' <= char <= '\u9fff')
+    
+    return english_count + chinese_count

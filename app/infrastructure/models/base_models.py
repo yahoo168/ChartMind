@@ -1,11 +1,17 @@
 from pydantic import BaseModel
-from bson import ObjectId
+from datetime import datetime, timezone
+from typing import Optional
 
-# 创建自定义基础模型
-class PyObjectId(BaseModel):
+class MetadataModel(BaseModel):
+    source: str = ''
+    # Status
+    is_deleted: bool = False
+    is_processed: bool = False
+    # Timestamp
+    created_timestamp: datetime = datetime.now(timezone.utc)
+    updated_timestamp: datetime = datetime.now(timezone.utc)
+    processed_timestamp: Optional[datetime] = None
+    
     model_config = {
-        "arbitrary_types_allowed": True,
-        "json_encoders": {
-            ObjectId: str  # 在序列化模型為 JSON 時生效，例如當你調用 model.json() 或 model.dict() 方法時
-        }
+        "arbitrary_types_allowed": True
     }
