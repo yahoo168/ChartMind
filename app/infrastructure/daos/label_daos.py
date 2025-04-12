@@ -25,8 +25,3 @@ class LabelDAO(MongodbBaseDAO):
     @ensure_initialized
     async def is_label_exists(self, user_id: str, label_name: str):
         return await self.collection.count_documents({"user_id": ObjectId(user_id), "name": label_name}) > 0
-    
-    # @ensure_initialized
-    # async def find_label_by_id(self, label_id: str):
-    #     label = await self.collection.find_one({"_id": ObjectId(label_id)})
-    #     return label

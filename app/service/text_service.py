@@ -29,34 +29,53 @@ class TextManagementService:
     
     async def upload_text(self, text: str, user_id: str, source: str):
         logger.info(f"Uploading text: {text} for user: {user_id} with source: {source}")
-        try:
-            text_model = TextModel(content=text, 
-                                   user_id=ObjectId(user_id), 
-                                   metadata=MetadataModel(source=source),
-                                   description=TextDescriptionModel())
-            text_id = await self.text_dao.insert_one(text_model)
-        except Exception as e:
-            logger.error(f"Error uploading text: {e}")
-            raise e
-            
-        try:
-            # 提取文本中的URL，并保存到数据库
-            urls = extract_urls_from_text(text)
-            if urls:
+        
+        # 提取文本中的URL
+        urls = extract_urls_from_text(text)
+        
+        # 检查是否为纯URL（文本去除URL后为空）
+        is_pure_url = False
+        if urls:
+            # 从原文本中移除所有URL，检查剩余内容是否为空
+            remaining_text = text
+            for url in urls:
+                remaining_text = remaining_text.replace(url, "").strip()
+            is_pure_url = len(remaining_text) == 0
+        
+        text_id = None
+        # 如果不是纯URL，则创建文本记录
+        if not is_pure_url:
+            try:
+                text_model = TextModel(content=text, 
+                                      user_id=ObjectId(user_id), 
+                                      metadata=MetadataModel(source=source),
+                                      description=TextDescriptionModel())
+                text_id = await self.text_dao.insert_one(text_model)
+            except Exception as e:
+                logger.error(f"Error uploading text: {e}")
+                raise e
+        
+        # 处理URL
+        if urls:
+            try:
                 url_models = []
                 for url in urls:
                     url_model = UrlModel(url=url, 
-                                         user_id=ObjectId(user_id), 
-                                         metadata=MetadataModel(source=source),
-                                         description=UrlDescriptionModel(),
-                                         parent_text=text_id)
+                                        user_id=ObjectId(user_id), 
+                                        metadata=MetadataModel(source=source),
+                                        description=UrlDescriptionModel(),
+                                        parent_text=text_id)  # 如果是纯URL，parent_text为None
                     url_models.append(url_model)
                 url_ids = await self.url_dao.insert_many(url_models)
-                # 更新文本的子URL
-                await self.text_dao.update_child_urls(text_id, url_ids)
-        except Exception as e:
-            logger.error(f"Error uploading urls: {e}")
-            raise e
+                
+                # 只有在创建了文本记录的情况下才更新子URL
+                if text_id:
+                    await self.text_dao.update_child_urls(text_id, url_ids)
+            except Exception as e:
+                logger.error(f"Error uploading urls: {e}")
+                raise e
+        
+        return text_id  # 返回文本ID，如果是纯URL则为None
 
 class TextAnalysisService:
     def __init__(self):

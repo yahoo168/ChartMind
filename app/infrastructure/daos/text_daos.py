@@ -64,3 +64,11 @@ class TextDAO(MongodbBaseDAO):
     async def delete_many(self, url_ids: list[ObjectId]):
         result = await self.collection.delete_many({"_id": {"$in": url_ids}})
         return result.deleted_count
+    
+    @ensure_initialized
+    async def full_text_search(self, query_text, limit=10):
+        return await super().full_text_search(query_text, limit)
+    
+    @ensure_initialized
+    async def vector_search(self, query_vector, limit=10, num_candidates=100):
+        return await super().vector_search(query_vector, limit, num_candidates)

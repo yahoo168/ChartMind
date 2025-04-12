@@ -79,3 +79,98 @@ class MongodbBaseDAO:
         else:
             # 其他類型直接返回
             return data
+    
+    async def full_text_search(self, query_text, limit, min_score=0.5):
+        pipeline = [
+            {
+                "$search": {
+                    "index": "full_text_search", 
+                    "text": {
+                        "query": query_text,
+                        "path": {
+                            "wildcard": "*"
+                        }
+                    }
+                }
+            },
+            {"$addFields": {
+                "score": {"$meta": "searchScore"}
+            }},
+            {"$match": {
+                "$and": [
+                    {
+                        "$or": [
+                            {"metadata.is_deleted": {"$ne": True}},
+                            {"metadata.is_deleted": {"$exists": False}}
+                        ]
+                    },
+                    {"score": {"$gte": min_score}}
+                ]
+            }},
+            {"$sort": {"score": -1}},
+            {"$project": {
+                "description.summary_vector": 0
+            }},
+            {"$limit": limit}
+        ]
+
+        try:
+            cursor = self.collection.aggregate(pipeline)
+            results = await cursor.to_list(length=None)
+            return results
+        except Exception as e:
+            logging.error(f"全文搜索失败: {str(e)}")
+            raise
+
+    async def vector_search(self, query_vector, limit, num_candidates=100, min_score=0):
+        """
+        使用向量搜索在集合中查找相似文檔
+        
+        Args:
+            query_vector: 查詢向量（必须是实际的向量数据，不能是协程）
+            limit: 返回結果的最大數量
+            num_candidates: 候選項數量
+            min_score: 最小相似度分數，低於此分數的結果將被過濾掉
+            
+        Returns:
+            相似度排序後的文檔列表
+        """
+            
+        pipeline = [
+            {
+                "$vectorSearch": {
+                    "index": "semantic_search",
+                    "path": "description.summary_vector",
+                    "queryVector": query_vector,
+                    "numCandidates": num_candidates,
+                    "limit": limit
+                }
+            },
+            {"$addFields": {
+                "similarity_score": {"$meta": "vectorSearchScore"}
+            }},
+            {"$match": {
+                "$and": [
+                    {
+                        "$or": [
+                            {"metadata.is_deleted": {"$ne": True}},
+                            {"metadata.is_deleted": {"$exists": False}}
+                        ]
+                    },
+                    {"similarity_score": {"$gte": min_score}}
+                ]
+            }},
+            {"$sort": {"similarity_score": -1}},
+            {"$project": {
+                "description.summary_vector": 0
+            }},
+            {"$limit": limit},
+        ]
+
+        try:
+            cursor = self.collection.aggregate(pipeline)
+            results = await cursor.to_list(length=None)
+            return results
+        except Exception as e:
+            logging.error(f"向量搜索失敗: {str(e)}")
+            raise

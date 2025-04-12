@@ -63,3 +63,11 @@ class FileDAO(MongodbBaseDAO):
         result = await self.collection.delete_one({"_id": ObjectId(document_id)})
         return result.deleted_count
     
+    # Search
+    @ensure_initialized
+    async def full_text_search(self, query_text, limit=10):
+        return await super().full_text_search(query_text, limit)
+    
+    @ensure_initialized
+    async def vector_search(self, query_vector, limit=10, num_candidates=100):
+        return await super().vector_search(query_vector, limit, num_candidates)

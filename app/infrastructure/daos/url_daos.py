@@ -52,3 +52,11 @@ class UrlDAO(MongodbBaseDAO):
     @ensure_initialized
     async def update_url_is_processed(self, url_id, is_processed):
         await self.collection.update_one({"_id": ObjectId(url_id)}, {"$set": {"metadata.is_processed": is_processed}})
+    
+    @ensure_initialized
+    async def full_text_search(self, query_text, limit=10):
+        return await super().full_text_search(query_text, limit)
+    
+    @ensure_initialized
+    async def vector_search(self, query_vector, limit=10, num_candidates=100):
+        return await super().vector_search(query_vector, limit, num_candidates)

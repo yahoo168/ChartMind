@@ -123,3 +123,11 @@ class ImageDAO(MongodbBaseDAO):
         except Exception as e:
             logging.error(f"删除图片时出错 {image_id}: {str(e)}")
             return 0
+    
+    @ensure_initialized
+    async def full_text_search(self, query_text, limit=10):
+        return await super().full_text_search(query_text, limit)
+    
+    @ensure_initialized
+    async def vector_search(self, query_vector, limit=10, num_candidates=100):
+        return await super().vector_search(query_vector, limit, num_candidates)
