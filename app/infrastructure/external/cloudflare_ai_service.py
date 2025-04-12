@@ -7,7 +7,7 @@ from app.utils.logging_utils import logger
 class CloudflareAIService:
     def __init__(self, 
                  model="gpt-4o-mini", 
-                 embedding_model="text-embedding-3-small"):
+                 embedding_model="text-embedding-3-large"):
         
         self.api_endpoint = os.environ.get("CLOUDFLARE_AI_ENDPOINT")
         self.api_token = os.environ.get("OPENAI_API_TOKEN")

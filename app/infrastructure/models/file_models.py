@@ -2,19 +2,12 @@ from pydantic import BaseModel
 from datetime import datetime, timezone
 from typing import List, Optional
 from bson import ObjectId
-from app.infrastructure.models.base_models import MetadataModel
+from app.infrastructure.models.base_models import MetadataModel, BaseDescriptionModel
 
-class FileDescriptionModel(BaseModel):
-    auto_title: str = ''
-    summary: str = ''
-    summary_vector: List[float] = []
-    labels: List[ObjectId] = []
-    model_config = {
-        "arbitrary_types_allowed": True,
-        "json_encoders": {
-            ObjectId: str
-        }
-    }
+# 使用基础描述模型替代重复的FileDescriptionModel
+class FileDescriptionModel(BaseDescriptionModel):
+    # 可以在这里添加文件特有的描述字段
+    pass
 
 class FileModel(BaseModel):
     user_id: ObjectId

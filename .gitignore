@@ -4,5 +4,6 @@ images/
 temp_store/
 __pycache__/
 venv/
+*.ipynb
 test.ipynb
 test2.ipynb

@@ -42,9 +42,12 @@ class UrlDAO(MongodbBaseDAO):
         return await self.collection.find({"metadata.is_processed": False}).to_list(length=None)
 
     @ensure_initialized
-    async def update_url_preview(self, url_id, title, thumbnail_url, description_summary, summary_vector):
-        await self.collection.update_one({"_id": ObjectId(url_id)}, {"$set": {"title": title, "thumbnail_url": thumbnail_url, 
-                                                                              "description.summary": description_summary, "description.summary_vector": summary_vector}})
+    async def update_url_preview(self, url_id, title, thumbnail_url, description_summary, summary_vector, label_ids):
+        await self.collection.update_one({"_id": ObjectId(url_id)}, {"$set": {"title": title, 
+                                                                              "thumbnail_url": thumbnail_url, 
+                                                                              "description.summary": description_summary, 
+                                                                              "description.summary_vector": summary_vector,
+                                                                              "description.labels": label_ids}})
     
     @ensure_initialized
     async def update_url_is_processed(self, url_id, is_processed):

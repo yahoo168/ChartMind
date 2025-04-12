@@ -1,19 +1,11 @@
 from pydantic import BaseModel
 from typing import List, Optional
 from bson import ObjectId
-from app.infrastructure.models.base_models import MetadataModel
+from app.infrastructure.models.base_models import MetadataModel, BaseDescriptionModel
 
-class TextDescriptionModel(BaseModel):
-    auto_title: str = ''
-    summary: str = ''
-    summary_vector: List[float] = []
-    labels: List[ObjectId] = []
-    model_config = {
-        "arbitrary_types_allowed": True,
-        "json_encoders": {
-            ObjectId: str
-        }
-    }
+class TextDescriptionModel(BaseDescriptionModel):
+    # 文本特有的描述字段可以在这里添加
+    pass
 
 class TextModel(BaseModel):
     user_id: ObjectId
@@ -25,6 +17,7 @@ class TextModel(BaseModel):
     parent_file: Optional[ObjectId] = None
     file_page_num: Optional[int] = None
     child_urls: List[ObjectId] = []
+    
     model_config = {
         "arbitrary_types_allowed": True,
         "json_encoders": {

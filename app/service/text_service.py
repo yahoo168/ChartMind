@@ -1,6 +1,6 @@
 from bson import ObjectId
 from app.infrastructure.external.cloudflare_ai_service import CloudflareAIService
-
+from app.service.label_service import LabelApplicationService
 from app.infrastructure.models.text_models import TextModel, TextDescriptionModel
 from app.infrastructure.models.url_models import UrlModel, UrlDescriptionModel
 from app.infrastructure.models.base_models import MetadataModel
@@ -21,8 +21,8 @@ class TextManagementService:
     async def get_unprocessed_texts(self):
         return await self.text_dao.find_unprocessed_texts()
     
-    async def update_text_description(self, text_id: str, text_summary: str, text_summary_vector: list, text_title: str):
-        await self.text_dao.update_text_description(text_id, text_summary, text_summary_vector, text_title)
+    async def update_text_description(self, text_id: str, text_description: TextDescriptionModel):
+        await self.text_dao.update_text_description(text_id, text_description)
     
     async def update_text_is_processed(self, text_id: str, is_processed: bool):
         await self.text_dao.update_text_is_processed(text_id, is_processed)
@@ -62,8 +62,7 @@ class TextAnalysisService:
     def __init__(self):
         self.text_management_service = TextManagementService()
         self.llm_service = CloudflareAIService()
-        self.text_dao = TextDAO()
-        self.url_dao = UrlDAO()
+        self.label_application_service = LabelApplicationService()
         
     async def process_text(self):
         """处理未处理的文本"""
@@ -87,29 +86,57 @@ class TextAnalysisService:
     async def _process_single_text(self, text_doc: dict, language: str = "zh-TW", summary_min_length: int = 200):
         """处理单个文本"""
         try:
-            text = text_doc["content"]
             text_id = text_doc["_id"]
-
-            text_summary = ''
-            text_title = ''
-            text_summary_vector = []
-
-            word_count = count_words(text)
-            if word_count >= summary_min_length:
-                if language == "zh-TW":
-                    prompt = "請以繁體中文分析本段文字，用100字左右撰寫內容摘要，捕捉核心觀點，並取一個濃縮文字重點的標題，返回JSON格式，包含2個鍵：summary和title"
-                else:
-                    prompt = "Please analyze this text in English, write a 100-word summary capturing the core points, and give a concise title, return JSON format with 2 keys: summary and title"
-                
-                llm_result = await self.llm_service.analyze_text(text, prompt, json_response=True)
-                text_summary, text_title = llm_result.get("summary", ""), llm_result.get("title", "")
-                text_summary_vector = await self.llm_service.get_embedding(text_summary)
-            
-            else:
-                text_summary_vector = await self.llm_service.get_embedding(text)
-            
-            await self.text_management_service.update_text_description(text_id, text_summary, text_summary_vector, text_title)  
+            text_description = await self._get_text_description(text_doc, language, summary_min_length)
+            await self.text_management_service.update_text_description(text_id, text_description)  
             await self.text_management_service.update_text_is_processed(text_id, True)
         
         except Exception as e:
             logger.error(f"Error processing text: {e}")
+    
+    async def _get_text_description(self, text_doc: dict, language: str, summary_min_length: int):
+        user_id = text_doc["user_id"]
+        content = text_doc["content"]
+
+        summary = ''
+        auto_title = ''
+        summary_vector = []
+        keywords = []
+
+        word_count = count_words(content)
+        if word_count >= summary_min_length:
+            if language == "zh-TW":
+                prompt = """請以繁體中文分析本段文字，用100字撰寫內容摘要，捕捉核心觀點，並取一個濃縮文字重點的標題，以及提取5個關鍵詞，返回JSON格式，
+                包含3個鍵：summary、title和keywords（keywords為包含5個關鍵詞的數組）"""
+            else:
+                prompt = """Please analyze this text in English, write a 100-word summary capturing the core points, 
+                give a concise title, and extract 5 keywords, return JSON format with 3 keys: summary, 
+                title, and keywords (keywords should be an array of 5 keywords)"""
+            
+            llm_result = await self.llm_service.analyze_text(content, prompt, json_response=True)
+            
+            summary = llm_result.get("summary", "")
+            auto_title = llm_result.get("title", "")
+            keywords = llm_result.get("keywords", [])
+            logger.info(f"keywords: {keywords}")
+            summary_vector = await self.llm_service.get_embedding(summary)
+
+        # 如果文本字數不足100字，則使用文本內容進行向量化（且沒有keyword）
+        else:
+            summary_vector = await self.llm_service.get_embedding(content)
+        
+        # 匹配用户标签
+        labels = await self.label_application_service.match_user_labels(user_id, summary_vector)
+        labels_ids = [label['_id'] for label in labels]
+        
+        # 打印匹配的标签(debug)
+        for label in labels:
+            logger.info(f"Label Matched: {label['name']}")
+        
+        return TextDescriptionModel(
+            auto_title=auto_title,
+            summary=summary,
+            summary_vector=summary_vector,
+            labels=labels_ids,
+            keywords=keywords
+        )

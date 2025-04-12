@@ -5,7 +5,7 @@ import asyncio
 from app.utils.logging_utils import logger
 from app.utils.format_utils import extract_pdf_content
 from app.infrastructure.external.cloudflare_ai_service import CloudflareAIService
-
+from app.service.label_service import LabelApplicationService
 from app.infrastructure.daos.file_daos import FileDAO
 from app.infrastructure.models.file_models import FileModel, FileDescriptionModel
 from app.infrastructure.models.text_models import TextModel, TextDescriptionModel
@@ -53,7 +53,7 @@ class FileManagementService:
                                        description=FileDescriptionModel())
             document_id = await self.create_document(document_model)
             
-            text_ids = await self._process_pdf(file_path, user_id, source, document_id)
+            text_ids = await self._process_pdf_text(file_path, user_id, source, document_id)
             await self.update_document_child_texts(document_id, text_ids)
             return document_id
         
@@ -61,7 +61,7 @@ class FileManagementService:
             await self._cleanup_orphan_resources(text_ids, document_id, object_key, e)
             raise e
     
-    async def _process_pdf(self, file_path: str, user_id: str, source: str, file_id: ObjectId):
+    async def _process_pdf_text(self, file_path: str, user_id: str, source: str, file_id: ObjectId):
         text_models = []
         pages_text = extract_pdf_content(file_path)
         # 逐頁生成Text物件，並保存到資料庫
@@ -100,7 +100,7 @@ class FileAnalysisService:
         self.file_dao = FileDAO()
         self.file_management_service = FileManagementService()
         self.llm_service = CloudflareAIService()
-
+        self.label_application_service = LabelApplicationService()
     async def process_files(self, language: str = "zh-TW"):
         """处理所有未处理的文件"""
         try:
@@ -136,43 +136,54 @@ class FileAnalysisService:
         try:
             file_id = file_doc["_id"]
             logger.info(f"开始处理文件 ID: {file_id}")
-            
-            # 获取文件内容（從預先存入的text中獲取）
-            file_texts = await self.file_management_service.get_file_texts(file_id)
-            file_text = '\n'.join(file_texts)[:10000] # 限制文件內容不超過10000字，避免Token過多
-            
-            if language == "zh-TW":
-                prompt = """請分析這個文件，並以JSON格式提供以下資訊：
-                    {
-                        "title": "簡短的標題",
-                        "summary": "詳細的文件描述，約150字", 
-                        "labels": ["標籤1", "標籤2", "標籤3", "標籤4", "標籤5"]
-                    }
-                    請確保回應是有效的JSON格式。"""
-            else:
-                prompt = """Please analyze this file and provide the following information in JSON format:
-                    {
-                        "title": "a concise title",
-                        "summary": "detailed file description, about 150 words",
-                        "labels": ["label1", "label2", "label3", "label4", "label5"]
-                    }
-                    Please ensure the response is in valid JSON format."""
-                
-            llm_result = await self.llm_service.analyze_text(file_text, prompt, json_response=True)
-            title = llm_result.get("title", '')
-            summary = llm_result.get("summary", '')
-            labels = llm_result.get("labels", [])
-            summary_vector = await self.llm_service.get_embedding(summary)
-            
-            description = FileDescriptionModel(
-                auto_title=title,
-                summary=summary,
-                summary_vector=summary_vector
-            )
+            description = await self._get_file_description(file_doc, language)
             await self.file_management_service.update_file_description(file_id, description)
             await self.file_management_service.update_file_is_processed(file_id, True)
-            
             return file_id  # 返回成功处理的文件ID
         except Exception as e:
             logger.error(f"处理文件 {file_doc.get('_id', '未知')} 时出错: {e}")
             raise  # 重新抛出异常，让调用者知道处理失败
+    
+    async def _get_file_description(self, file_doc: dict, language: str = "zh-TW", max_length: int = 10000):
+        """获取文件描述"""
+        file_id = file_doc["_id"]
+        user_id = file_doc["user_id"]
+        
+        # 获取文件内容（從預先存入的text中獲取）
+        file_texts = await self.file_management_service.get_file_texts(file_id)
+        file_text = '\n'.join(file_texts)[:max_length] # 限制文件內容不超過10000字，避免Token過多
+        
+        if language == "zh-TW":
+            prompt = """請分析以下文件內容，並以JSON格式提供以下資訊：
+                {
+                    "title": "簡短的標題",
+                    "summary": "詳細的文件描述，約100字", 
+                    "keywords": ["關鍵詞1", "關鍵詞2", "關鍵詞3", "關鍵詞4", "關鍵詞5"]
+                }
+                請確保回應是有效的JSON格式。"""
+        else:
+            prompt = """Please analyze this file and provide the following information in JSON format:
+                {
+                    "title": "a concise title",
+                    "summary": "detailed file description, about 100 words",
+                    "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"]
+                }
+                Please ensure the response is in valid JSON format."""
+            
+        llm_result = await self.llm_service.analyze_text(file_text, prompt, json_response=True)
+        title = llm_result.get("title", '')
+        summary = llm_result.get("summary", '')
+        keywords = llm_result.get("keywords", [])
+
+        summary_vector = await self.llm_service.get_embedding(summary)
+
+        labels = await self.label_application_service.match_user_labels(user_id, summary_vector)
+        label_ids = [label["_id"] for label in labels]
+        
+        return FileDescriptionModel(
+            auto_title=title,
+            summary=summary,
+            summary_vector=summary_vector,
+            labels=label_ids,
+            keywords=keywords,
+        )

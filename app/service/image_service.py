@@ -29,7 +29,7 @@ class ImageManagementService:
         """更新图像的标签信息"""
         await self.image_dao.update_labels(image_id, labels)
     
-    async def update_description(self, image_id, description):
+    async def update_description(self, image_id, description: ImageDescriptionModel):
         """添加图像描述"""
         await self.image_dao.update_description(image_id, description)
     
@@ -91,17 +91,17 @@ class ImageAnalysisService:
             if language == "zh-TW":
                 prompt = """請分析這張圖片，並提供以下資訊：
                     1. 詳細的圖片描述，約150字
-                    2. 5個相關label
+                    2. 5個相關的keywords
                     3. 一個簡短的title
-                    請以JSON格式回應，包含三個鍵：summary、labels（Array）和title。
+                    請以JSON格式回應，包含三個鍵：summary、keywords（Array）和title。
                     請確保所有回應內容均使用繁體中文。
                     """
             else:
                 prompt = """Please analyze this image and provide the following information:
                     1. Detailed image description, about 150 words
-                    2. 5 related labels
+                    2. 5 related keywords
                     3. A concise title
-                    Please return the response in JSON format, containing three keys: summary, labels (Array), and title.
+                    Please return the response in JSON format, containing three keys: summary, keywords (Array), and title.
                     Please ensure all content is in English.
                     """
 
@@ -109,14 +109,14 @@ class ImageAnalysisService:
             
             title = llm_result.get("title", '')
             summary = llm_result.get("summary", '')
-            labels = llm_result.get("labels", [])
+            keywords = llm_result.get("keywords", [])
             summary_vector = await self.llm_service.get_embedding(summary)
             
             return {
                 "title": title,
                 "summary": summary,
                 "summary_vector": summary_vector,
-                "labels": labels
+                "keywords": keywords
             }
         
         except Exception as e:
@@ -134,7 +134,7 @@ class ImageAnalysisService:
             "summary": llm_analysis_result.get("summary", ''),
             "summary_vector": llm_analysis_result.get("summary_vector", []),
             "ocr_text": ocr_text,
-            "labels": llm_analysis_result.get("labels", [])
+            "keywords": llm_analysis_result.get("keywords", [])
         }
     
     async def get_image_description(self, image: dict):
@@ -143,12 +143,11 @@ class ImageAnalysisService:
         image_analysis = await self.get_image_analysis(image_url)
         
         summary_vector = image_analysis.get("summary_vector", [])
-        potential_labels = image_analysis.get("labels", [])
         
-        matched_labels = await self.label_application_service.match_user_labels(user_id, summary_vector, potential_labels)
-        matched_label_ids = [label["_id"] for label in matched_labels]
-        # 打印匹配的标签
-        for label in matched_labels:
+        labels = await self.label_application_service.match_user_labels(user_id, summary_vector)
+        label_ids = [label["_id"] for label in labels]
+        # labels
+        for label in labels:
             logger.info(f"Matched Labels: {label['name']}")
         
         description = ImageDescriptionModel(
@@ -156,7 +155,8 @@ class ImageAnalysisService:
             auto_title=image_analysis.get("title", ''),
             summary=image_analysis.get("summary", ''),
             summary_vector=summary_vector,
-            labels=matched_label_ids
+            labels=label_ids,
+            keywords=image_analysis.get("keywords", [])
         )
         return description
     

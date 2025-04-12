@@ -1,7 +1,5 @@
 from app.infrastructure.daos.mongodb_base import MongodbBaseDAO, ensure_initialized
-from app.infrastructure.models.text_models import TextModel
-from app.infrastructure.models.url_models import UrlModel
-
+from app.infrastructure.models.text_models import TextModel, TextDescriptionModel
 from bson import ObjectId
 from datetime import datetime, timezone
 
@@ -35,10 +33,8 @@ class TextDAO(MongodbBaseDAO):
         await self.collection.update_one({"_id": ObjectId(text_id)}, {"$set": {"child_urls": url_ids}})
     
     @ensure_initialized
-    async def update_text_description(self, text_id: str, text_summary: str, text_summary_vector: list, text_title: str):
-        await self.collection.update_one({"_id": ObjectId(text_id)}, {"$set": {"description.summary": text_summary, 
-                                                                               "description.summary_vector": text_summary_vector, 
-                                                                               "description.auto_title": text_title}})
+    async def update_text_description(self, text_id: str, text_description: TextDescriptionModel):
+        await self.collection.update_one({"_id": ObjectId(text_id)}, {"$set": {"description": text_description.model_dump()}})
     
     @ensure_initialized
     async def update_text_is_processed(self, text_id: str, is_processed: bool):
