@@ -3,7 +3,11 @@ from app.service.label_service import LabelApplicationService
 from app.infrastructure.daos.url_daos import UrlDAO
 from app.utils.logging_utils import logger
 from app.utils.url_utils import get_url_preview
+
+from app.infrastructure.models.url_models import UrlModel, UrlDescriptionModel
+from app.infrastructure.models.base_models import MetadataModel
 import asyncio
+from bson import ObjectId
 
 class UrlManagementService:
     def __init__(self):
@@ -17,6 +21,31 @@ class UrlManagementService:
     
     async def update_url_is_processed(self, url_id, is_processed):
         await self.url_dao.update_url_is_processed(url_id, is_processed)
+
+    async def delete_url(self, url_id: ObjectId):
+        await self.url_dao.delete_one(url_id)
+
+    async def create_urls_from_text(self, urls: list[str], authorized_users: list[ObjectId], 
+                                   uploader: ObjectId, upload_source: str, 
+                                   line_group_id: str = '', parent_text_id: str = None):
+        """从文本中创建URL记录"""
+        try:            
+            url_models = []
+            for url in urls:
+                url_model = UrlModel(url=url, 
+                                    authorized_users=authorized_users,
+                                    uploader=uploader,
+                                    metadata=MetadataModel(upload_source=upload_source, 
+                                                           line_group_id=line_group_id,),
+                                    description=UrlDescriptionModel(),
+                                    parent_text=parent_text_id)
+                url_models.append(url_model)
+            
+            url_ids = await self.url_dao.insert_many(url_models)
+            return url_ids
+        except Exception as e:
+            logger.error(f"Error creating URLs from text: {e}")
+            raise e
 
 class UrlAnalysisService:
     def __init__(self):

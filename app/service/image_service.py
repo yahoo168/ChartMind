@@ -6,6 +6,7 @@ from app.infrastructure.external.GoogleDocumentAI_service import GoogleDocumentA
 from app.infrastructure.external.cloudflare_ai_service import CloudflareAIService
 from app.utils.logging_utils import logger
 from app.service.label_service import LabelApplicationService
+from app.service.user_service import UserManagementService
 from app.infrastructure.daos.image_daos import ImageDAO
 from app.infrastructure.models.image_models import ImageDescriptionModel, ImageModel
 from app.infrastructure.models.base_models import MetadataModel
@@ -15,7 +16,8 @@ class ImageManagementService:
     def __init__(self):
         self.image_dao = ImageDAO()
         self.r2_storage = R2Storage()
-    
+        self.user_management_service = UserManagementService()
+        
     async def get_images_by_user(self, user_id: str):
         """获取用户的所有图像"""
         return await self.image_dao.find_images_by_user_id(user_id)
@@ -37,20 +39,23 @@ class ImageManagementService:
         """更新图像处理状态"""
         await self.image_dao.update_is_processed(image_id, is_processed)
     
-    async def upload_image(self, file_path: str, user_id: str, source: str) -> str:
+    async def upload_image(self, file_path: str, uploader: ObjectId, authorized_users: list[ObjectId], 
+                           upload_source: str, line_group_id: str='') -> str:
         """上传图像到R2存储并将元数据保存到数据库"""
-        upload_result = self.r2_storage.upload(file_path, user_id)
+        upload_result = self.r2_storage.upload(file_path, uploader)
         file_url = upload_result["url"]
         object_key = upload_result["object_key"]
         result = None
         
         try:
             image_data = ImageModel(
-                user_id=ObjectId(user_id),
+                authorized_users=authorized_users,
+                uploader=uploader,
                 file_url=file_url, 
                 file_size=os.path.getsize(file_path),
-                file_type=os.path.splitext(file_path)[1],
-                metadata=MetadataModel(source=source),
+                file_type=os.path.splitext(file_path)[1].lstrip('.'),
+                metadata=MetadataModel(upload_source=upload_source, 
+                                       line_group_id=line_group_id,),
                 description=ImageDescriptionModel(),
             )
             result = await self.image_dao.insert_one(image_data)
@@ -65,7 +70,6 @@ class ImageManagementService:
                 logger.error(f"删除已创建的图像记录: {result}")
                 await self.image_dao.delete_one(result)
             raise e
-        
 
 class ImageAnalysisService:
     """图像领域服务，处理与图像相关的核心业务逻辑"""

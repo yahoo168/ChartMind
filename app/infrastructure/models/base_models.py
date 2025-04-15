@@ -36,10 +36,10 @@ class MetadataModel(BaseModel):
     created_timestamp: datetime = datetime.now(timezone.utc)
     updated_timestamp: datetime = datetime.now(timezone.utc)
     processed_timestamp: Optional[datetime] = None
-    last_viewed_timestamp: Optional[datetime] = None
     
     # Upload Source
     upload_source: str = ''
+    line_group_id: str = ''
     
     model_config = {
         "arbitrary_types_allowed": True

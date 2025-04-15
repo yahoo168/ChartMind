@@ -13,6 +13,10 @@ class UserManagementService:
             raise TypeError(f"Invalid search field: {by}")
         return await self.user_dao.find_user(**{by: value})
     
+    async def get_users_by_line_group_id(self, line_group_id: str):
+        """根据Line Group ID获取用户"""
+        return await self.user_dao.find_users_by_line_group_id(line_group_id, only_id = True)
+
     async def create_user(self, user: dict):
         """从网站注册创建用户"""
         await self.user_dao.create_user(user)

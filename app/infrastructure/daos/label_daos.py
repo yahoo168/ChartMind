@@ -5,7 +5,7 @@ from app.infrastructure.models.label_models import LabelModel
 class LabelDAO(MongodbBaseDAO):
     def __init__(self):
         super().__init__()
-        self.database_name = "Materials"
+        self.database_name = "Content"
         self.collection_name = "Labels"
     
     @ensure_initialized

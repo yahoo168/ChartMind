@@ -32,9 +32,10 @@ def _handle_image_message(event):
     message_id = event.message.id
     reply_token = event.reply_token
     line_id = event.source.user_id
+    line_group_id = event.source.group_id if hasattr(event.source, 'group_id') else '' #若是官方帳號，則不會有group_id
     
     # 使用已定義的事件循環運行異步函數
-    loop.create_task(handle_image_message(message_id, line_id, reply_token))
+    loop.create_task(handle_image_message(message_id, line_id, reply_token, line_group_id))
 
 # 處理文字訊息
 @handler.add(MessageEvent, message=TextMessage)
@@ -43,9 +44,9 @@ def _handle_text_message(event):
     text = event.message.text
     reply_token = event.reply_token
     line_id = event.source.user_id
-    
+    line_group_id = event.source.group_id if hasattr(event.source, 'group_id') else '' #若是官方帳號，則不會有group_id
     # 使用已定義的事件循環運行異步函數
-    loop.create_task(handle_text_message(text, line_id, reply_token))
+    loop.create_task(handle_text_message(text, line_id, reply_token, line_group_id))
 
 # 處理檔案訊息
 @handler.add(MessageEvent, message=FileMessage)
@@ -54,7 +55,8 @@ def _handle_file_message(event):
     message_id = event.message.id
     reply_token = event.reply_token
     line_id = event.source.user_id
+    line_group_id = event.source.group_id if hasattr(event.source, 'group_id') else '' #若是官方帳號，則不會有group_id
     file_name = event.message.file_name
     
     # 使用已定義的事件循環運行異步函數
-    loop.create_task(handle_file_message(message_id, line_id, reply_token, file_name))
+    loop.create_task(handle_file_message(message_id, line_id, reply_token, file_name, line_group_id))

@@ -31,15 +31,16 @@ class FileManagementService:
     async def update_document_child_texts(self, document_id: str, text_ids: List[ObjectId]):
         return await self.file_dao.update_child_texts(document_id, text_ids)
 
-    async def upload_file(self, file_name: str, file_path: str, user_id: str, source: str, file_type: str):
+    async def create_file(self, file_name: str, file_path: str, user_id: str, source: str, file_type: str, line_group_id: str=''):
         """上传文件的通用方法"""
         if file_type == "pdf":
-            return await self._upload_pdf(file_name, file_path, user_id, source)
+            return await self._upload_pdf(file_name, file_path, user_id, source, line_group_id)
         else:
             raise ValueError(f"不支持的文件类型: {file_type}")
     
-    async def _upload_pdf(self, file_name: str, file_path: str, user_id: str, source: str):
+    async def _upload_pdf(self, file_name: str, file_path: str, user_id: str, source: str, line_group_id: str=''):
         """处理PDF文件上传的内部方法"""
+        logger.info(f"file-service: {line_group_id}")
         upload_result = self.r2_storage.upload(file_path, user_id)
         file_url = upload_result["url"]
         object_key = upload_result["object_key"]
@@ -48,12 +49,18 @@ class FileManagementService:
 
         try:
             file_size = os.path.getsize(file_path)
-            document_model = FileModel(file_type="pdf", title=file_name, file_url=file_url, user_id=ObjectId(user_id), file_size=file_size,
-                                       metadata=MetadataModel(source=source),
-                                       description=FileDescriptionModel())
+            document_model = FileModel(file_type="pdf", title=file_name, file_url=file_url, 
+                                       authorized_users=[ObjectId(user_id)],
+                                       uploader=ObjectId(user_id),
+                                       file_size=file_size,
+                                       metadata=MetadataModel(upload_source=source, 
+                                                              line_group_id=line_group_id,),
+                                       description=FileDescriptionModel(),
+                                       )
+            
             document_id = await self.create_document(document_model)
             
-            text_ids = await self._process_pdf_text(file_path, user_id, source, document_id)
+            text_ids = await self._process_pdf_text(file_path, user_id, source, document_id, line_group_id)
             await self.update_document_child_texts(document_id, text_ids)
             return document_id
         
@@ -61,13 +68,16 @@ class FileManagementService:
             await self._cleanup_orphan_resources(text_ids, document_id, object_key, e)
             raise e
     
-    async def _process_pdf_text(self, file_path: str, user_id: str, source: str, file_id: ObjectId):
+    async def _process_pdf_text(self, file_path: str, user_id: str, source: str, file_id: ObjectId, line_group_id: str):
         text_models = []
         pages_text = extract_pdf_content(file_path)
         # 逐頁生成Text物件，並保存到資料庫
         for i in range(len(pages_text)):
-            text_model = TextModel(content=pages_text[i], user_id=ObjectId(user_id), 
-                                   metadata=MetadataModel(source=source),
+            text_model = TextModel(content=pages_text[i], 
+                                   authorized_users=[ObjectId(user_id)], 
+                                   uploader=ObjectId(user_id),
+                                   metadata=MetadataModel(upload_source=source, 
+                                                          line_group_id=line_group_id),
                                    parent_file=file_id, file_page_num=i+1)
             text_models.append(text_model)
         return await self.text_dao.insert_many(text_models)

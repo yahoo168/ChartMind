@@ -10,7 +10,8 @@ class FileDescriptionModel(BaseDescriptionModel):
     pass
 
 class FileModel(BaseModel):
-    user_id: ObjectId
+    authorized_users: List[ObjectId]=[]
+    uploader: ObjectId
     # File
     title: str = ''
     file_url: str = ''

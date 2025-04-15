@@ -2,11 +2,10 @@ from bson import ObjectId
 from app.infrastructure.external.cloudflare_ai_service import CloudflareAIService
 from app.service.label_service import LabelApplicationService
 from app.infrastructure.models.text_models import TextModel, TextDescriptionModel
-from app.infrastructure.models.url_models import UrlModel, UrlDescriptionModel
 from app.infrastructure.models.base_models import MetadataModel
 from app.infrastructure.daos.text_daos import TextDAO
 from app.infrastructure.daos.url_daos import UrlDAO
-
+from app.service.url_services import UrlManagementService
 from app.utils.logging_utils import logger
 from app.utils.url_utils import extract_urls_from_text
 from app.utils.format_utils import count_words
@@ -17,6 +16,7 @@ class TextManagementService:
     def __init__(self):
         self.text_dao = TextDAO()
         self.url_dao = UrlDAO()
+        self.url_management_service = UrlManagementService()
     
     async def get_unprocessed_texts(self):
         return await self.text_dao.find_unprocessed_texts()
@@ -27,8 +27,9 @@ class TextManagementService:
     async def update_text_is_processed(self, text_id: str, is_processed: bool):
         await self.text_dao.update_text_is_processed(text_id, is_processed)
     
-    async def upload_text(self, text: str, user_id: str, source: str):
-        logger.info(f"Uploading text: {text} for user: {user_id} with source: {source}")
+    async def upload_text(self, text: str, uploader: ObjectId, authorized_users: list[ObjectId], 
+                           upload_source: str, line_group_id: str=''):
+        logger.info(f"Uploading text: {text} for user: {uploader} with source: {upload_source}")
         
         # 提取文本中的URL
         urls = extract_urls_from_text(text)
@@ -47,35 +48,36 @@ class TextManagementService:
         if not is_pure_url:
             try:
                 text_model = TextModel(content=text, 
-                                      user_id=ObjectId(user_id), 
-                                      metadata=MetadataModel(source=source),
-                                      description=TextDescriptionModel())
+                                      authorized_users=authorized_users,
+                                      uploader=uploader,
+                                      metadata=MetadataModel(upload_source=upload_source, 
+                                                             line_group_id=line_group_id,),
+                                      description=TextDescriptionModel(),)
                 text_id = await self.text_dao.insert_one(text_model)
             except Exception as e:
                 logger.error(f"Error uploading text: {e}")
                 raise e
         
+        url_ids = []
         # 处理URL
         if urls:
-            try:
-                url_models = []
-                for url in urls:
-                    url_model = UrlModel(url=url, 
-                                        user_id=ObjectId(user_id), 
-                                        metadata=MetadataModel(source=source),
-                                        description=UrlDescriptionModel(),
-                                        parent_text=text_id)  # 如果是纯URL，parent_text为None
-                    url_models.append(url_model)
-                url_ids = await self.url_dao.insert_many(url_models)
-                
-                # 只有在创建了文本记录的情况下才更新子URL
-                if text_id:
-                    await self.text_dao.update_child_urls(text_id, url_ids)
-            except Exception as e:
-                logger.error(f"Error uploading urls: {e}")
-                raise e
+            url_ids = await self.url_management_service.create_urls_from_text(
+                urls=urls,
+                authorized_users=authorized_users,
+                uploader=uploader,
+                upload_source=upload_source,
+                line_group_id=line_group_id,
+                parent_text_id=text_id
+            )
+            
+            # 只有在创建了文本记录的情况下才更新子URL
+            if text_id and url_ids:
+                await self.text_dao.update_child_urls(text_id, url_ids)
         
-        return text_id  # 返回文本ID，如果是纯URL则为None
+        return {"text_id": text_id, "url_ids": url_ids}  # 返回文本ID和URL IDs
+
+    async def delete_text(self, text_id: ObjectId):
+        await self.text_dao.delete_one(text_id)
 
 class TextAnalysisService:
     def __init__(self):

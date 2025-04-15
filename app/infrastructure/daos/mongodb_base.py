@@ -80,7 +80,25 @@ class MongodbBaseDAO:
             # 其他類型直接返回
             return data
     
-    async def full_text_search(self, query_text, limit, min_score=0.5):
+    async def full_text_search(self, query_text, limit, user_id, min_score=0.5, access_filter=None):
+        """
+        全文搜索函数，使用filter参数在搜索阶段直接过滤用户权限
+        
+        Args:
+            query_text: 搜索文本
+            limit: 返回结果的最大数量
+            user_id: 当前用户ID（必要参数）
+            min_score: 最小相似度分数
+            access_filter: 自定义访问权限过滤条件
+        """
+        # 构建用户权限过滤条件
+        user_access_filter = {
+            "$or": [
+                {"authorized_users": user_id},  # 确保authorized_users字段包含user_id
+            ]
+        }
+        
+        # 构建搜索管道，在搜索阶段直接应用权限过滤
         pipeline = [
             {
                 "$search": {
@@ -90,29 +108,45 @@ class MongodbBaseDAO:
                         "path": {
                             "wildcard": "*"
                         }
-                    }
+                    },
+                    "filter": user_access_filter  # 在搜索阶段直接应用权限过滤
                 }
             },
             {"$addFields": {
                 "score": {"$meta": "searchScore"}
-            }},
-            {"$match": {
-                "$and": [
-                    {
-                        "$or": [
-                            {"metadata.is_deleted": {"$ne": True}},
-                            {"metadata.is_deleted": {"$exists": False}}
-                        ]
-                    },
-                    {"score": {"$gte": min_score}}
-                ]
-            }},
+            }}
+        ]
+        
+        # 构建其他匹配条件
+        match_conditions = []
+        
+        # 添加删除标记过滤
+        match_conditions.append({
+            "$or": [
+                {"metadata.is_deleted": {"$ne": True}},
+                {"metadata.is_deleted": {"$exists": False}}
+            ]
+        })
+        
+        # 添加分数过滤
+        match_conditions.append({"score": {"$gte": min_score}})
+        
+        # 添加自定义访问过滤器
+        if access_filter:
+            match_conditions.append(access_filter)
+        
+        # 将其他匹配条件添加到管道中
+        if match_conditions:
+            pipeline.append({"$match": {"$and": match_conditions}})
+        
+        # 添加排序、投影和限制
+        pipeline.extend([
             {"$sort": {"score": -1}},
             {"$project": {
                 "description.summary_vector": 0
             }},
             {"$limit": limit}
-        ]
+        ])
 
         try:
             cursor = self.collection.aggregate(pipeline)
@@ -122,20 +156,25 @@ class MongodbBaseDAO:
             logging.error(f"全文搜索失败: {str(e)}")
             raise
 
-    async def vector_search(self, query_vector, limit, num_candidates=100, min_score=0):
+    async def vector_search(self, query_vector, limit, user_id, num_candidates=100, min_score=0, access_filter=None):
         """
-        使用向量搜索在集合中查找相似文檔
+        使用向量搜索在集合中查找相似文档，使用filter参数在搜索阶段直接过滤用户权限
         
         Args:
-            query_vector: 查詢向量（必须是实际的向量数据，不能是协程）
-            limit: 返回結果的最大數量
-            num_candidates: 候選項數量
-            min_score: 最小相似度分數，低於此分數的結果將被過濾掉
-            
-        Returns:
-            相似度排序後的文檔列表
+            query_vector: 查询向量（必须是实际的向量数据，不能是协程）
+            limit: 返回结果的最大数量
+            user_id: 当前用户ID（必要参数）
+            num_candidates: 候选项数量
+            min_score: 最小相似度分数，低于此分数的结果将被过滤掉
+            access_filter: 自定义访问权限过滤条件
         """
-            
+        # 构建用户权限过滤条件
+        user_access_filter = {
+            "$or": [
+                {"authorized_users": user_id},  # 确保authorized_users字段包含user_id
+            ]
+        }
+        
         pipeline = [
             {
                 "$vectorSearch": {
@@ -143,34 +182,50 @@ class MongodbBaseDAO:
                     "path": "description.summary_vector",
                     "queryVector": query_vector,
                     "numCandidates": num_candidates,
-                    "limit": limit
+                    "limit": limit,
+                    "filter": user_access_filter  # 在向量搜索阶段直接应用权限过滤
                 }
             },
             {"$addFields": {
                 "similarity_score": {"$meta": "vectorSearchScore"}
-            }},
-            {"$match": {
-                "$and": [
-                    {
-                        "$or": [
-                            {"metadata.is_deleted": {"$ne": True}},
-                            {"metadata.is_deleted": {"$exists": False}}
-                        ]
-                    },
-                    {"similarity_score": {"$gte": min_score}}
-                ]
-            }},
+            }}
+        ]
+        
+        # 构建其他匹配条件
+        match_conditions = []
+        
+        # 添加删除标记过滤
+        match_conditions.append({
+            "$or": [
+                {"metadata.is_deleted": {"$ne": True}},
+                {"metadata.is_deleted": {"$exists": False}}
+            ]
+        })
+        
+        # 添加分数过滤
+        match_conditions.append({"similarity_score": {"$gte": min_score}})
+        
+        # 添加自定义访问过滤器
+        if access_filter:
+            match_conditions.append(access_filter)
+        
+        # 将其他匹配条件添加到管道中
+        if match_conditions:
+            pipeline.append({"$match": {"$and": match_conditions}})
+        
+        # 添加排序、投影和限制
+        pipeline.extend([
             {"$sort": {"similarity_score": -1}},
             {"$project": {
                 "description.summary_vector": 0
             }},
-            {"$limit": limit},
-        ]
+            {"$limit": limit}
+        ])
 
         try:
             cursor = self.collection.aggregate(pipeline)
             results = await cursor.to_list(length=None)
             return results
         except Exception as e:
-            logging.error(f"向量搜索失敗: {str(e)}")
+            logging.error(f"向量搜索失败: {str(e)}")
             raise

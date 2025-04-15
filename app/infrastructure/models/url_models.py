@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import List, Optional
 from bson import ObjectId
 from app.infrastructure.models.base_models import MetadataModel, BaseDescriptionModel
 
@@ -8,10 +8,13 @@ class UrlDescriptionModel(BaseDescriptionModel):
     pass
 
 class UrlModel(BaseModel):
+    authorized_users: List[ObjectId]=[]
+    uploader: ObjectId
+
     url: str
     title: str = ''
     thumbnail_url: str = ''
-    user_id: ObjectId
+    
     description: UrlDescriptionModel = UrlDescriptionModel()
     metadata: MetadataModel = MetadataModel()
     # Link

@@ -10,7 +10,7 @@ class ImageDAO(MongodbBaseDAO):
         # 先調用父類初始化，確保所有屬性都已存在
         super().__init__()
         # 然後設置子類特定的屬性
-        self.database_name = "Materials"
+        self.database_name = "Content"
         self.collection_name = "Images"
 
     @ensure_initialized

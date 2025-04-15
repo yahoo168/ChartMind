@@ -5,13 +5,13 @@ from linebot import LineBotApi
 from linebot.models import TextSendMessage
 
 from app.service.user_service import UserManagementService, UserAuthService
-from app.service.application_service import UserMaterialsUploadService
+from app.service.application_service import UserContentUploadService
 from app.utils.logging_utils import logger
 
 line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
 
 # 處理圖片訊息
-async def handle_image_message(message_id, line_id, reply_token):
+async def handle_image_message(message_id, line_id, reply_token, line_group_id):
     image_path = None
     try:
         # 檢查用戶狀態
@@ -30,8 +30,8 @@ async def handle_image_message(message_id, line_id, reply_token):
         try:
             image_path = await download_line_content(message_id, file_ext)
                 
-            user_materials_upload_service = UserMaterialsUploadService()
-            await user_materials_upload_service.upload_image(image_path, user_id, "line")
+            user_content_upload_service = UserContentUploadService()
+            await user_content_upload_service.upload_image(image_path, user_id, "linebot", line_group_id)
             # 構建基本回覆
             reply_text = f"✅ 已收到圖表！"
         except Exception as e:
@@ -48,7 +48,7 @@ async def handle_image_message(message_id, line_id, reply_token):
         await cleanup_temp_file(image_path)
 
 # 處理文字訊息
-async def handle_text_message(text, line_id, reply_token):
+async def handle_text_message(text, line_id, reply_token, line_group_id):
     try:
         logger.info(f"收到文字訊息: {text}")
         # 檢查用戶狀態
@@ -59,8 +59,11 @@ async def handle_text_message(text, line_id, reply_token):
         if len(text) < 15:
             reply_text = "❌ 訊息過短，不進行處理。"
         else:
-            user_materials_upload_service = UserMaterialsUploadService()
-            await user_materials_upload_service.upload_text(text, user_id, "line")
+            user_content_upload_service = UserContentUploadService()
+            await user_content_upload_service.upload_text(text=text, 
+                                                          uploader_id=user_id, 
+                                                          source="linebot", 
+                                                          line_group_id=line_group_id)
             reply_text = "✅ 確認接收文字訊息！"
         # 回覆用戶
         await reply_to_user(reply_token, reply_text)
@@ -70,7 +73,7 @@ async def handle_text_message(text, line_id, reply_token):
         await reply_to_user(reply_token, "❌ 處理訊息時發生錯誤，請稍後再試。")
 
 # 處理文件訊息
-async def handle_file_message(message_id, line_id, reply_token, file_name):
+async def handle_file_message(message_id, line_id, reply_token, file_name, line_group_id):
     """处理用户上传的文件消息
     
     Args:
@@ -85,18 +88,24 @@ async def handle_file_message(message_id, line_id, reply_token, file_name):
         user_id = user_status["user_data"]["_id"]
 
         # 获取文件扩展名
-        file_ext = os.path.splitext(file_name)[1].lower()
+        file_ext = os.path.splitext(file_name)[1].lower().lstrip('.')
         
         # 检查是否为PDF文件
-        if file_ext not in ['.pdf']:
+        if file_ext not in ['pdf']:
             await reply_to_user(reply_token, f"❌ 暂不支持处理{file_ext}类型的文件。目前仅支持PDF文件。")
             return
         
         # 下载文件内容
         file_path = await download_line_content(message_id, file_ext)
             
-        user_materials_upload_service = UserMaterialsUploadService()
-        await user_materials_upload_service.upload_file(file_ext=file_ext, file_name=file_name, file_path=file_path, user_id=user_id, source="line")
+        user_content_upload_service = UserContentUploadService()
+        logger.info(f"linebot-service: {line_group_id}")
+        await user_content_upload_service.upload_file(file_ext=file_ext, 
+                                                      file_name=file_name, 
+                                                      file_path=file_path, 
+                                                      user_id=user_id, 
+                                                      source="linebot", 
+                                                      line_group_id=line_group_id)
         
         # 回复用户
         reply_text = f"✅ 確認接收{file_ext}文件！"

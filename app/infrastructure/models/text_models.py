@@ -8,12 +8,13 @@ class TextDescriptionModel(BaseDescriptionModel):
     pass
 
 class TextModel(BaseModel):
-    user_id: ObjectId
+    authorized_users: List[ObjectId] = []
+    uploader: ObjectId
+    
     content: str
     description: TextDescriptionModel = TextDescriptionModel()
     metadata: MetadataModel = MetadataModel()
     # Link
-    parent_document: Optional[ObjectId] = None
     parent_file: Optional[ObjectId] = None
     file_page_num: Optional[int] = None
     child_urls: List[ObjectId] = []
