@@ -16,20 +16,25 @@ class LabelManagementService:
         """检查标签是否存在"""
         return await self.dao.is_label_exists(user_id, label_name)
     
-    async def create_label(self, user_id: str, label_name: str):
+    async def create_label(self, user_id: str, label_name: str, label_description: str):
         """创建标签"""
-        if len(label_name) >= 50:
-            logger.info(f"标签名称过长: {label_name}，限制为50个字符")
+        if len(label_name) >= 30:
+            logger.info(f"标签名称过长: {label_name}，限制为30个字符")
+            return None
+        
+        if len(label_description) >= 200:
+            logger.info(f"标签描述过长: {label_description}，限制为200个字符")
             return None
         
         if await self.is_label_exists(user_id, label_name):
             logger.info(f"标签已存在: {label_name}")
             return None
         
-        vector = await self.llm_service.get_embedding(label_name)
+        vector = await self.llm_service.get_embedding(label_description)
         
         label = LabelModel(
             name=label_name,
+            description=label_description,
             user_id=user_id,
             vector=vector,
             is_deleted=False
@@ -89,15 +94,14 @@ class LabelApplicationService:
         
         return final_labels
     
-    def _categorize_labels_by_similarity(self, labels:List[LabelModel], content_vector:List[float], high_threshold=0.7, low_threshold=0.3):
+    def _categorize_labels_by_similarity(self, labels:List[LabelModel], content_vector:List[float], high_threshold=0.7, low_threshold=0.25):
         """根据相似度对标签进行分类"""
         high_priority = []
         low_priority = []
         
         for label in labels:
             similarity = cosine_similarity(content_vector, label['vector'])
-            # logger.info(f"label: {label['name']} 相似度: {similarity}")
-            
+            logger.info(f"标签: {label['name']} 相似度: {similarity}")
             if similarity > high_threshold:
                 high_priority.append((label, similarity))
             elif similarity > low_threshold:

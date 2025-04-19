@@ -137,8 +137,7 @@ class FileService(ContentService):
         file_text = '\n'.join(file_texts)[:10000]  # 限制不超过10000字，避免Token超限
         
         # 获取通用分析结果
-        analysis_result = await self.get_content_analysis(file_text, language)
-        
+        analysis_result = await self.get_content_analysis(text=file_text, language=language)
         return FileDescriptionModel(
             auto_title=analysis_result["title"],
             summary=analysis_result["summary"],

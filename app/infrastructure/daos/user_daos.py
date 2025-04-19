@@ -44,6 +44,10 @@ class UserContentMetaDAO(MongodbBaseDAO):
         self.collection_name = "UserContentMeta"
         
     @ensure_initialized
+    async def find_user_content_meta(self, content_id: ObjectId):
+        return await self.collection.find({"content_id": content_id}).to_list(length=None)
+    
+    @ensure_initialized
     async def insert_one(self, user_content_meta_data: UserContentMetadataModel):
         result = await self.collection.insert_one(user_content_meta_data.model_dump())
         return result.inserted_id
@@ -51,5 +55,11 @@ class UserContentMetaDAO(MongodbBaseDAO):
     @ensure_initialized
     async def insert_many(self, user_content_meta_data: list[UserContentMetadataModel]):
         result = await self.collection.insert_many([meta.model_dump() for meta in user_content_meta_data])
-        return result.inserted_ids
-        
+        return result.inserted_ids  
+    
+    @ensure_initialized
+    async def update_content_labels(self, user_id: ObjectId, content_id: ObjectId, content_type: str, label_ids: list[ObjectId]):
+        return await self.collection.update_one(
+            {"user_id": user_id, "content_id": content_id, "content_type": content_type},
+            {"$set": {"labels": label_ids}}
+        )

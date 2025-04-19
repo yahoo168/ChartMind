@@ -6,6 +6,7 @@ from bson import ObjectId
 class LabelModel(BaseModel):
     user_id: ObjectId
     name: str
+    description: str
     vector: List[float]
     created_timestamp: datetime = datetime.now(timezone.utc)
     updated_timestamp: Optional[datetime] = None

@@ -4,6 +4,7 @@ from app.utils.auth_utils import generate_random_string, create_access_token, ha
 from app.exceptions.user_exceptions import UserAlreadyExistsError, InvalidCredentialsError, UserCreationError
 from app.infrastructure.models.user_models import UserContentMetadataModel
 from app.utils.logging_utils import logger
+from bson import ObjectId
 class UserManagementService:
     """用户管理服务，处理用户相关的核心业务逻辑"""    
     def __init__(self):
@@ -103,7 +104,15 @@ class UserAuthService:
 class UserContentMetaService:
     def __init__(self):
         self.user_content_meta_dao = UserContentMetaDAO()
-        
+    
+    async def get_user_content_meta(self, content_id: ObjectId):
+        """获取用户内容元数据"""
+        return await self.user_content_meta_dao.find_user_content_meta(content_id)
+    
+    async def update_content_labels(self, user_id: ObjectId, content_id: ObjectId, content_type: str, label_ids: list[ObjectId]):
+        """更新内容标签"""
+        return await self.user_content_meta_dao.update_content_labels(user_id, content_id, content_type, label_ids)
+
     async def create_content_meta(self, content_type: str, content_ids: list[str], user_ids: list[str]):
         """
         批量创建用户内容元数据

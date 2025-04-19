@@ -8,6 +8,7 @@ from app.infrastructure.external.cloudflare_ai_service import CloudflareAIServic
 from app.service.label_service import LabelApplicationService
 from app.infrastructure.db.r2 import R2Storage
 from app.infrastructure.daos.content_dao import ContentDAO
+from app.service.user_service import UserContentMetaService
 
 # 内容处理基类
 class ContentService(ABC):
@@ -19,7 +20,8 @@ class ContentService(ABC):
         self.llm_service = CloudflareAIService()
         self.label_application_service = LabelApplicationService()
         self.r2_storage = R2Storage()    
-    
+        self.user_content_meta_service = UserContentMetaService()
+        
     @abstractmethod
     async def create_content(self, **kwargs) -> ObjectId:
         """创建内容记录"""
@@ -139,11 +141,31 @@ class ContentService(ABC):
             
             description = await self.get_content_description(content)
             await self.update_content_description(content_id, description)
-            await self.update_is_processed(content_id, True)
             
+            # 在內存中更新 content 對象
+            content["description"] = description.model_dump()
+            
+            await self.update_content_labels(content)
+            await self.update_is_processed(content_id, True)
             logger.info(f"已完成{self.content_type}处理 ID: {content_id}")
             return content_id
         
         except Exception as e:
             logger.error(f"处理{self.content_type} {content.get('_id', '未知')} 时出错: {e}")
             return None
+    
+    async def update_content_labels(self, content: Dict) -> List[ObjectId]:
+        """获取内容标签"""
+        content_id = content["_id"]
+        content_vector = content["description"]["summary_vector"]
+        authorized_users = content["authorized_users"]
+        content_type = self.content_type
+        
+        logger.info(f"内容{content_id} 类型: {content_type} 授权用户: {authorized_users}")
+        # 對於每個授權用戶，匹配其標籤
+        for user_id in authorized_users:
+            labels = await self.label_application_service.match_user_labels(user_id, content_vector)
+            label_ids = [label["_id"] for label in labels]
+            label_names = [label["name"] for label in labels]
+            logger.info(f"用户{user_id} 内容{content_id} 标签: {label_names}")
+            await self.user_content_meta_service.update_content_labels(user_id, content_id, content_type, label_ids)
