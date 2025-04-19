@@ -1,36 +1,17 @@
 import logging
-from datetime import datetime, timezone
-from typing import List, Dict
-from bson import ObjectId
-from app.infrastructure.daos.mongodb_base import MongodbBaseDAO, ensure_initialized
+from app.infrastructure.daos.content_dao import ContentDAO, ensure_initialized
 from app.infrastructure.models.image_models import ImageModel, ImageDescriptionModel
+from bson import ObjectId
+from typing import List
 
-class ImageDAO(MongodbBaseDAO):
+class ImageDAO(ContentDAO[ImageModel]):
     def __init__(self):
-        # 先調用父類初始化，確保所有屬性都已存在
-        super().__init__()
-        # 然後設置子類特定的屬性
-        self.database_name = "Content"
+        super().__init__(model_class=ImageModel)
         self.collection_name = "Images"
-
-    @ensure_initialized
-    async def insert_one(self, image_data: ImageModel):
-        result = await self.collection.insert_one(image_data.model_dump())
-        return result.inserted_id
     
     @ensure_initialized
-    async def update_is_processed(self, image_id: str, is_processed: bool):
-        result = await self.collection.update_one(
-            {"_id": ObjectId(image_id)},
-            {"$set": {"metadata.is_processed": is_processed,
-                      "metadata.processed_timestamp": datetime.now(timezone.utc),
-                      "metadata.updated_timestamp": datetime.now(timezone.utc)
-                      }}
-        )
-        return result.modified_count
-
-    @ensure_initialized
     async def update_description(self, image_id: str, description: ImageDescriptionModel):
+        """更新图片描述信息"""
         result = await self.collection.update_one(
             {"_id": ObjectId(image_id)},
             {"$set": {"description": description.model_dump()}}
@@ -39,6 +20,7 @@ class ImageDAO(MongodbBaseDAO):
     
     @ensure_initialized
     async def update_ocr_text(self, image_id: str, ocr_text: str):
+        """更新图片OCR文本"""
         result = await self.collection.update_one(
             {"_id": ObjectId(image_id)},
             {"$set": {"description.ocr_text": ocr_text}}
@@ -47,6 +29,7 @@ class ImageDAO(MongodbBaseDAO):
             
     @ensure_initialized
     async def update_labels(self, image_id: str, labels: List[str]):
+        """更新图片标签"""
         try:
             result = await self.collection.update_one(
                 {"_id": ObjectId(image_id)},
@@ -59,6 +42,7 @@ class ImageDAO(MongodbBaseDAO):
     
     @ensure_initialized
     async def update_summary(self, image_id: str, summary: str):
+        """更新图片摘要"""
         try:
             result = await self.collection.update_one(
                 {"_id": ObjectId(image_id)},
@@ -71,6 +55,7 @@ class ImageDAO(MongodbBaseDAO):
     
     @ensure_initialized
     async def find_images_by_label(self, label_id: str, user_id: str = None):
+        """根据标签查找图片"""
         try:
             query = {"description.labels": ObjectId(label_id)}
             if user_id:
@@ -83,51 +68,3 @@ class ImageDAO(MongodbBaseDAO):
         except Exception as e:
             logging.error(f"按标签查找图片时出错: {str(e)}")
             return []
-        
-    @ensure_initialized
-    async def find_images_by_user_id(self, user_id: str):
-        try:
-            cursor = self.collection.find({"user_id": ObjectId(user_id)})
-            images = await cursor.to_list(length=None)
-            images = [ImageModel(**image_data) for image_data in images]
-            return images
-        
-        except Exception as e:
-            logging.error(f"Error getting user images for {user_id}: {str(e)}")
-            return []
-    
-    @ensure_initialized
-    async def find_unprocessed_images(self):
-        try:
-            cursor = self.collection.find({"metadata.is_processed": False})
-            images = await cursor.to_list(length=None)
-            return images
-        except Exception as e:
-            logging.error(f"Error finding unprocessed images: {str(e)}")
-            return []
-
-    @ensure_initialized
-    async def update_processed_status(self, image_id: str, is_processed: bool):
-        result = await self.collection.update_one(
-            {"_id": ObjectId(image_id)},
-            {"$set": {"metadata.is_processed": is_processed, 
-                      "metadata.processed_timestamp": datetime.now(timezone.utc)}}
-        )
-        return result.modified_count
-
-    @ensure_initialized
-    async def delete_image_by_id(self, image_id: str):
-        try:
-            result = await self.collection.delete_one({"_id": ObjectId(image_id)})
-            return result.deleted_count
-        except Exception as e:
-            logging.error(f"删除图片时出错 {image_id}: {str(e)}")
-            return 0
-    
-    @ensure_initialized
-    async def full_text_search(self, query_text, limit=10):
-        return await super().full_text_search(query_text, limit)
-    
-    @ensure_initialized
-    async def vector_search(self, query_vector, limit=10, num_candidates=100):
-        return await super().vector_search(query_vector, limit, num_candidates)

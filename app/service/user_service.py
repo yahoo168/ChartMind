@@ -1,7 +1,9 @@
 from app.infrastructure.daos.user_daos import UserDAO
+from app.infrastructure.daos.user_daos import UserContentMetaDAO
 from app.utils.auth_utils import generate_random_string, create_access_token, hash_password, verify_password
 from app.exceptions.user_exceptions import UserAlreadyExistsError, InvalidCredentialsError, UserCreationError
-
+from app.infrastructure.models.user_models import UserContentMetadataModel
+from app.utils.logging_utils import logger
 class UserManagementService:
     """用户管理服务，处理用户相关的核心业务逻辑"""    
     def __init__(self):
@@ -97,3 +99,34 @@ class UserAuthService:
             }
         except Exception as e:
             raise UserCreationError(f"Failed to create user: {str(e)}")
+
+class UserContentMetaService:
+    def __init__(self):
+        self.user_content_meta_dao = UserContentMetaDAO()
+        
+    async def create_content_meta(self, content_type: str, content_ids: list[str], user_ids: list[str]):
+        """
+        批量创建用户内容元数据
+        
+        Args:
+            content_type: 内容类型，如"text"、"url"、"file"、"image"等
+            content_ids: 内容ID列表
+            user_ids: 用户ID列表，可以是单个用户ID或多个用户ID
+            
+        Returns:
+            插入的元数据记录
+        """
+        meta_records = []
+        
+        # 为每个用户创建每个内容的元数据记录（笛卡尔积）
+        for user_id in user_ids:
+            for content_id in content_ids:
+                meta_records.append(
+                    UserContentMetadataModel(
+                        user_id=user_id,
+                        content_id=content_id,
+                        content_type=content_type
+                    )
+                )
+        
+        return await self.user_content_meta_dao.insert_many(meta_records)

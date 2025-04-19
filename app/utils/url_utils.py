@@ -2,6 +2,44 @@ import aiohttp
 import re
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
+from app.utils.logging_utils import logger
+
+def check_is_pure_url(text):
+    """
+    檢查輸入的字串是否只包含URL
+
+    參數:
+        text (str): 輸入字串
+
+    回傳:
+        bool: 如果只包含URL則返回True，否則返回False
+    """
+    if not text or not text.strip():
+        return False
+        
+    urls = extract_urls_from_text(text)
+    if not urls:
+        return False
+        
+    # 创建一个标记数组，标记哪些字符是URL的一部分
+    is_url_char = [False] * len(text)
+    for url in urls:
+        start_pos = 0
+        while True:
+            pos = text.find(url, start_pos)
+            if pos == -1:
+                break
+            # 标记这个URL的所有字符
+            for i in range(pos, pos + len(url)):
+                is_url_char[i] = True
+            start_pos = pos + 1
+    
+    # 检查所有非URL字符是否都是空白字符
+    for i, char in enumerate(text):
+        if not is_url_char[i] and not char.isspace():
+            return False
+    
+    return True
 
 def extract_urls_from_text(text):
     """
@@ -20,9 +58,31 @@ def extract_urls_from_text(text):
     )
     return url_pattern.findall(text)
 
+def remove_urls_from_text(text):
+    """
+    從輸入的字串中移除所有網址連結
+    
+    參數:
+        text (str): 輸入字串
+        
+    回傳:
+        str: 移除所有URL後的字串
+    """
+    if not text:
+        return text
+        
+    # 使用與extract_urls_from_text相同的URL正則表達式模式
+    url_pattern = re.compile(
+        r'(https?://[^\s]+|www\.[^\s]+)',
+        re.IGNORECASE
+    )
+    
+    # 將所有匹配的URL替換為空字串
+    return url_pattern.sub('', text)
+
 async def get_url_preview(url):
     """
-    非同步獲取網址的縮圖URL和內文預覽，特別支持YouTube
+    非同步獲取網址的縮圖URL和內文預覽
     
     參數:
         url (str): 要獲取預覽的網址
@@ -32,10 +92,9 @@ async def get_url_preview(url):
     """
     # 初始化結果
     result = {
-        'thumbnail_url': None,
         'title': None,
+        'thumbnail_url': None,
         'description': None,
-        'url': url
     }
     
     # 檢查是否為YouTube URL

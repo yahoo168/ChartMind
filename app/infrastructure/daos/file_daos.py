@@ -1,23 +1,18 @@
-from app.infrastructure.daos.mongodb_base import MongodbBaseDAO, ensure_initialized
+from app.infrastructure.daos.content_dao import ContentDAO, ensure_initialized
 from app.infrastructure.daos.text_daos import TextDAO
 from app.infrastructure.models.file_models import FileModel, FileDescriptionModel
 from bson import ObjectId
 from typing import List
-from datetime import datetime, timezone
-class FileDAO(MongodbBaseDAO):
+
+class FileDAO(ContentDAO[FileModel]):
     def __init__(self):
-        super().__init__()
-        self.database_name = "Materials"
+        super().__init__(model_class=FileModel)
         self.collection_name = "Files"
         self.text_dao = TextDAO()
-
-    @ensure_initialized
-    async def insert_one(self, document_data: FileModel):
-        result = await self.collection.insert_one(document_data.model_dump())
-        return result.inserted_id
     
     @ensure_initialized
     async def get_child_texts(self, file_id: ObjectId):
+        """获取文件关联的文本内容"""
         query = {"parent_file": file_id}
         text_docs = await self.text_dao.find(
             query, 
@@ -26,14 +21,10 @@ class FileDAO(MongodbBaseDAO):
         )
         child_texts = [text.get("content", "") for text in text_docs]
         return child_texts
-
-    @ensure_initialized
-    async def find_unprocessed_files(self):
-        result = await self.collection.find({"metadata.is_processed": False}).to_list(length=None)
-        return result
     
     @ensure_initialized
     async def update_description(self, document_id: str, description: FileDescriptionModel):
+        """更新文件描述信息"""
         result = await self.collection.update_one(
             {"_id": ObjectId(document_id)},
             {"$set": {"description": description.model_dump()}}
@@ -41,33 +32,10 @@ class FileDAO(MongodbBaseDAO):
         return result.modified_count
     
     @ensure_initialized
-    async def update_is_processed(self, document_id: str, is_processed: bool):
-        result = await self.collection.update_one(
-            {"_id": ObjectId(document_id)},
-            {"$set": {"metadata.is_processed": is_processed,
-                      "metadata.processed_timestamp": datetime.now(timezone.utc),
-                      "metadata.updated_timestamp": datetime.now(timezone.utc)}}
-        )
-        return result.modified_count
-
-    @ensure_initialized
-    async def update_child_texts(self, document_id: str, text_ids: list[ObjectId]):
+    async def update_child_texts(self, document_id: str, text_ids: List[ObjectId]):
+        """更新文件关联的文本ID列表"""
         result = await self.collection.update_one(
             {"_id": ObjectId(document_id)},
             {"$set": {"child_texts": text_ids}}
         )
         return result.modified_count
-    
-    @ensure_initialized
-    async def delete_one(self, document_id: str):
-        result = await self.collection.delete_one({"_id": ObjectId(document_id)})
-        return result.deleted_count
-    
-    # Search
-    @ensure_initialized
-    async def full_text_search(self, query_text, limit=10):
-        return await super().full_text_search(query_text, limit)
-    
-    @ensure_initialized
-    async def vector_search(self, query_vector, limit=10, num_candidates=100):
-        return await super().vector_search(query_vector, limit, num_candidates)

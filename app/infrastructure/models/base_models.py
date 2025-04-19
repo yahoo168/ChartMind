@@ -18,7 +18,6 @@ class BaseDescriptionModel(BaseModel):
     auto_title: str = ''
     summary: str = ''
     summary_vector: List[float] = []
-    labels: List[ObjectId] = []
     keywords: List[str] = []
     
     model_config = {

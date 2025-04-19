@@ -62,7 +62,7 @@ async def handle_text_message(text, line_id, reply_token, line_group_id):
             user_content_upload_service = UserContentUploadService()
             await user_content_upload_service.upload_text(text=text, 
                                                           uploader_id=user_id, 
-                                                          source="linebot", 
+                                                          upload_source="linebot", 
                                                           line_group_id=line_group_id)
             reply_text = "✅ 確認接收文字訊息！"
         # 回覆用戶
@@ -100,12 +100,12 @@ async def handle_file_message(message_id, line_id, reply_token, file_name, line_
             
         user_content_upload_service = UserContentUploadService()
         logger.info(f"linebot-service: {line_group_id}")
-        await user_content_upload_service.upload_file(file_ext=file_ext, 
-                                                      file_name=file_name, 
-                                                      file_path=file_path, 
-                                                      user_id=user_id, 
-                                                      source="linebot", 
-                                                      line_group_id=line_group_id)
+        await user_content_upload_service.upload_file(file_type=file_ext, 
+                                                        file_name=file_name, 
+                                                        file_path=file_path, 
+                                                        user_id=user_id, 
+                                                        upload_source="linebot", 
+                                                        line_group_id=line_group_id)
         
         # 回复用户
         reply_text = f"✅ 確認接收{file_ext}文件！"

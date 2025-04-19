@@ -4,17 +4,13 @@ from bson import ObjectId
 from app.infrastructure.models.base_models import MetadataModel, BaseDescriptionModel
 
 class UrlDescriptionModel(BaseDescriptionModel):
-    # URL特有的描述字段可以在这里添加
-    pass
+    thumbnail_url: str = ''
 
 class UrlModel(BaseModel):
     authorized_users: List[ObjectId]=[]
     uploader: ObjectId
 
     url: str
-    title: str = ''
-    thumbnail_url: str = ''
-    
     description: UrlDescriptionModel = UrlDescriptionModel()
     metadata: MetadataModel = MetadataModel()
     # Link

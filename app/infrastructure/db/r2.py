@@ -1,4 +1,4 @@
-import os
+import os, tempfile, shutil
 import boto3
 from dotenv import load_dotenv
 from datetime import datetime, timezone
@@ -22,7 +22,7 @@ class R2Storage:
             endpoint_url=self.endpoint_url
         )
     
-    def upload(self, local_path: str, user_id: str) -> str:
+    async def upload(self, local_path: str, user_id: str) -> str:
         """
         上傳檔案到 R2 儲存桶
         
@@ -48,7 +48,7 @@ class R2Storage:
             "object_key": object_key
         }
     
-    def delete(self, object_key: str) -> bool:
+    async def delete(self, object_key: str) -> bool:
         """
         從 R2 儲存桶中刪除指定的檔案
         
@@ -68,12 +68,45 @@ class R2Storage:
         except Exception as e:
             logger.error(f"[error] 從 R2 刪除檔案時發生錯誤: {str(e)}")
             return False
+    
+    async def download_to_temp(self, url: str) -> str:
+        """
+        從 R2 下載檔案到臨時目錄
+        
+        Args:
+            url: 要下載的檔案的完整 URL
+        
+        Returns:
+            str: 臨時檔案的路徑，使用後需手動刪除
+        """
+        # 從 URL 中提取物件鍵
+        object_key = url.replace(f"{self.public_base_url}/", "")
+        
+        # 下載檔案到臨時目錄
+        temp_dir = tempfile.mkdtemp()
+        temp_file_path = os.path.join(temp_dir, os.path.basename(object_key))
+        
+        try:
+            # 使用 boto3 下載檔案
+            logger.info(f"[log] 正在從 R2 下載檔案: {object_key} 到 {temp_file_path}")
+            self.s3.download_file(self.bucket, object_key, temp_file_path)
+            logger.info(f"[log] 成功從 R2 下載檔案到: {temp_file_path}")
+        except Exception as e:
+            logger.error(f"[error] 從 R2 下載檔案時發生錯誤: {str(e)}")
+            # 清理臨時目錄
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            raise
+            
+        return temp_file_path
 
-# 提供函數接口
-def upload_to_r2(local_path: str, user_id: str) -> str:
+async def upload_to_r2(local_path: str, user_id: str) -> str:
     r2 = R2Storage()
-    return r2.upload(local_path, user_id)
+    return await r2.upload(local_path, user_id)
 
-def delete_from_r2(object_key: str) -> bool:
+async def delete_from_r2(object_key: str) -> bool:
     r2 = R2Storage()
-    return r2.delete(object_key)
+    return await r2.delete(object_key)
+
+async def download_to_temp(url: str) -> str:
+    r2 = R2Storage()
+    return await r2.download_to_temp(url)

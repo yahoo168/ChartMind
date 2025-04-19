@@ -1,163 +1,130 @@
 from bson import ObjectId
-from app.infrastructure.external.cloudflare_ai_service import CloudflareAIService
-from app.service.label_service import LabelApplicationService
+from typing import Dict, Any
+
 from app.infrastructure.models.text_models import TextModel, TextDescriptionModel
 from app.infrastructure.models.base_models import MetadataModel
 from app.infrastructure.daos.text_daos import TextDAO
-from app.infrastructure.daos.url_daos import UrlDAO
-from app.service.url_services import UrlManagementService
+
 from app.utils.logging_utils import logger
-from app.utils.url_utils import extract_urls_from_text
+from app.utils.url_utils import extract_urls_from_text, check_is_pure_url, remove_urls_from_text
 from app.utils.format_utils import count_words
 
-import asyncio
+from app.service.url_services import UrlService
+from app.service.content_service import ContentService
+from app.service.user_service import UserContentMetaService
 
-class TextManagementService:
+
+class TextService(ContentService):
+    """文本服务，处理文本的创建、存储和分析"""
+    
     def __init__(self):
-        self.text_dao = TextDAO()
-        self.url_dao = UrlDAO()
-        self.url_management_service = UrlManagementService()
-    
-    async def get_unprocessed_texts(self):
-        return await self.text_dao.find_unprocessed_texts()
-    
-    async def update_text_description(self, text_id: str, text_description: TextDescriptionModel):
-        await self.text_dao.update_text_description(text_id, text_description)
-    
-    async def update_text_is_processed(self, text_id: str, is_processed: bool):
-        await self.text_dao.update_text_is_processed(text_id, is_processed)
-    
-    async def upload_text(self, text: str, uploader: ObjectId, authorized_users: list[ObjectId], 
-                           upload_source: str, line_group_id: str=''):
-        logger.info(f"Uploading text: {text} for user: {uploader} with source: {upload_source}")
+        super().__init__()
+        self.content_type = "text"
+        self.content_dao = TextDAO()
+        self.url_service = UrlService()
+        self.user_content_meta_service = UserContentMetaService()
+
+    async def create_content(self, text: str, uploader_id: ObjectId, authorized_users: list[ObjectId], upload_metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+        """创建文本内容，如果包含URL则也创建URL内容
+        
+        Args:
+            text: 文本内容
+            uploader_id: 上传者ID
+            authorized_users: 授权用户ID列表
+            upload_metadata: 上传元数据字典，可包含来源特定的信息
+        """
+        logger.info(f"创建文本: {text} 上传者: {uploader_id} 来源: {upload_metadata.get('upload_source')}")
         
         # 提取文本中的URL
         urls = extract_urls_from_text(text)
-        
-        # 检查是否为纯URL（文本去除URL后为空）
-        is_pure_url = False
-        if urls:
-            # 从原文本中移除所有URL，检查剩余内容是否为空
-            remaining_text = text
-            for url in urls:
-                remaining_text = remaining_text.replace(url, "").strip()
-            is_pure_url = len(remaining_text) == 0
-        
         text_id = None
-        # 如果不是纯URL，则创建文本记录
-        if not is_pure_url:
-            try:
-                text_model = TextModel(content=text, 
-                                      authorized_users=authorized_users,
-                                      uploader=uploader,
-                                      metadata=MetadataModel(upload_source=upload_source, 
-                                                             line_group_id=line_group_id,),
-                                      description=TextDescriptionModel(),)
-                text_id = await self.text_dao.insert_one(text_model)
-            except Exception as e:
-                logger.error(f"Error uploading text: {e}")
-                raise e
-        
         url_ids = []
-        # 处理URL
-        if urls:
-            url_ids = await self.url_management_service.create_urls_from_text(
-                urls=urls,
-                authorized_users=authorized_users,
-                uploader=uploader,
-                upload_source=upload_source,
-                line_group_id=line_group_id,
-                parent_text_id=text_id
-            )
+        
+        try:
+            # 检查是否为纯URL
+            is_pure_url = check_is_pure_url(text)
+            # 如果不是纯URL，则创建文本记录
+            if not is_pure_url:
+                text_model = TextModel(
+                    content=text, 
+                    authorized_users=authorized_users,
+                    uploader=uploader_id,
+                    metadata=MetadataModel(**upload_metadata),
+                    description=TextDescriptionModel()
+                )
+                text_id = await self.content_dao.insert_one(text_model)
+                
+
+                # 创建User Content Metadata
+                await self.user_content_meta_service.create_content_meta(
+                    content_type="text",
+                    content_ids=[text_id],
+                    user_ids=authorized_users
+                )
             
-            # 只有在创建了文本记录的情况下才更新子URL
+            # 创建URL
+            if urls:
+                url_ids = await self.url_service.create_content(
+                    urls=urls,
+                    uploader_id=uploader_id,
+                    authorized_users=authorized_users,
+                    parent_text_id=text_id,
+                    upload_metadata=upload_metadata,
+                )
+                
+                # 创建 User URL Metadata
+                if url_ids:
+                    await self.user_content_meta_service.create_content_meta(
+                        content_type="url",
+                        content_ids=url_ids,
+                        user_ids=authorized_users
+                    )
+                    
+            # 只有在创建了文本记录和URL的情况下才更新子URL
             if text_id and url_ids:
-                await self.text_dao.update_child_urls(text_id, url_ids)
-        
-        return {"text_id": text_id, "url_ids": url_ids}  # 返回文本ID和URL IDs
-
-    async def delete_text(self, text_id: ObjectId):
-        await self.text_dao.delete_one(text_id)
-
-class TextAnalysisService:
-    def __init__(self):
-        self.text_management_service = TextManagementService()
-        self.llm_service = CloudflareAIService()
-        self.label_application_service = LabelApplicationService()
-        
-    async def process_text(self):
-        """处理未处理的文本"""
-        try:
-            unprocessed_texts = await self.text_management_service.get_unprocessed_texts()
-            logger.info(f"Found {len(unprocessed_texts)} unprocessed texts.")
-            if not unprocessed_texts:
-                logger.info(f"Found no unprocessed texts.")
-                return
+                await self.content_dao.update_child_urls(text_id, url_ids)
             
-            # 创建任务列表
-            tasks = []
-            for text_doc in unprocessed_texts:
-                task = self._process_single_text(text_doc)
-                tasks.append(task)
-            await asyncio.gather(*tasks)
-            logger.info(f"Completed processing {len(tasks)} texts")
-        except Exception as e:
-            logger.error(f"Error processing texts: {e}")
-    
-    async def _process_single_text(self, text_doc: dict, language: str = "zh-TW", summary_min_length: int = 200):
-        """处理单个文本"""
-        try:
-            text_id = text_doc["_id"]
-            text_description = await self._get_text_description(text_doc, language, summary_min_length)
-            await self.text_management_service.update_text_description(text_id, text_description)  
-            await self.text_management_service.update_text_is_processed(text_id, True)
+            return {"text_id": text_id, "url_ids": url_ids}
         
         except Exception as e:
-            logger.error(f"Error processing text: {e}")
+            # 全局异常处理，确保所有资源都被清理
+            if url_ids:
+                await self.url_service.delete_content(url_ids)
+            if text_id:
+                await self.content_dao.delete_one(text_id)
+            logger.error(f"创建内容过程中发生未处理的异常: {e}")
+            raise e
     
-    async def _get_text_description(self, text_doc: dict, language: str, summary_min_length: int):
-        user_id = text_doc["user_id"]
-        content = text_doc["content"]
-
+    async def get_content_description(self, content: Dict, language: str = "zh-TW") -> TextDescriptionModel:
+        """获取文本描述"""
+        text = content["content"]
+        
         summary = ''
         auto_title = ''
         summary_vector = []
         keywords = []
-
-        word_count = count_words(content)
+        
+        # 去除URL後計算字數，確認是否需要LLM摘要
+        text = remove_urls_from_text(text)
+        word_count = count_words(text)
+        summary_min_length = 200  # 可配置的最小长度
+        
         if word_count >= summary_min_length:
-            if language == "zh-TW":
-                prompt = """請以繁體中文分析本段文字，用100字撰寫內容摘要，捕捉核心觀點，並取一個濃縮文字重點的標題，以及提取5個關鍵詞，返回JSON格式，
-                包含3個鍵：summary、title和keywords（keywords為包含5個關鍵詞的數組）"""
-            else:
-                prompt = """Please analyze this text in English, write a 100-word summary capturing the core points, 
-                give a concise title, and extract 5 keywords, return JSON format with 3 keys: summary, 
-                title, and keywords (keywords should be an array of 5 keywords)"""
+            # 获取通用分析结果
+            analysis_result = await self.get_content_analysis(text=text, language=language)
             
-            llm_result = await self.llm_service.analyze_text(content, prompt, json_response=True)
+            summary = analysis_result["summary"]
+            auto_title = analysis_result["title"]
+            summary_vector = analysis_result["summary_vector"]
+            keywords = analysis_result["keywords"]
             
-            summary = llm_result.get("summary", "")
-            auto_title = llm_result.get("title", "")
-            keywords = llm_result.get("keywords", [])
-            logger.info(f"keywords: {keywords}")
-            summary_vector = await self.llm_service.get_embedding(summary)
-
-        # 如果文本字數不足100字，則使用文本內容進行向量化（且沒有keyword）
         else:
-            summary_vector = await self.llm_service.get_embedding(content)
-        
-        # 匹配用户标签
-        labels = await self.label_application_service.match_user_labels(user_id, summary_vector)
-        labels_ids = [label['_id'] for label in labels]
-        
-        # 打印匹配的标签(debug)
-        for label in labels:
-            logger.info(f"Label Matched: {label['name']}")
+            # 文本过短，直接使用文本内容向量化
+            summary_vector = await self.llm_service.get_embedding(text)
         
         return TextDescriptionModel(
             auto_title=auto_title,
             summary=summary,
             summary_vector=summary_vector,
-            labels=labels_ids,
             keywords=keywords
         )
