@@ -7,6 +7,8 @@ class LabelModel(BaseModel):
     user_id: ObjectId
     name: str
     description: str
+    include_keywords: List[str] = []
+    exclude_keywords: List[str] = []
     vector: List[float]
     created_timestamp: datetime = datetime.now(timezone.utc)
     updated_timestamp: Optional[datetime] = None

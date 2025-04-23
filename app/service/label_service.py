@@ -16,7 +16,8 @@ class LabelManagementService:
         """检查标签是否存在"""
         return await self.dao.is_label_exists(user_id, label_name)
     
-    async def create_label(self, user_id: str, label_name: str, label_description: str):
+    async def create_label(self, user_id: str, label_name: str, label_description: str, 
+                           include_keywords: List[str] = [], exclude_keywords: List[str] = []):
         """创建标签"""
         if len(label_name) >= 30:
             logger.info(f"标签名称过长: {label_name}，限制为30个字符")
@@ -37,7 +38,9 @@ class LabelManagementService:
             description=label_description,
             user_id=user_id,
             vector=vector,
-            is_deleted=False
+            is_deleted=False,
+            include_keywords=include_keywords,
+            exclude_keywords=exclude_keywords
         )
         await self.dao.insert_one(label)
         return label
@@ -66,12 +69,13 @@ class LabelApplicationService:
     def __init__(self):
         self.label_management_service = LabelManagementService()
         self.llm_service = CloudflareAIService()
-    
-    async def match_user_labels(self, user_id:str, content_vector:List[float], max_labels: int = 5):
+
+    async def match_user_labels(self, user_id:str, representative_content:str, content_vector:List[float], max_labels: int = 5):
         """获取并匹配用户标签
         
         Args:
             user_id: 用户ID
+            representative_content: 内容代表性文本
             content_vector: 内容向量
             max_labels: 最大标签数量，默认为5
             
@@ -81,18 +85,75 @@ class LabelApplicationService:
         # 获取用户已存在的标签
         user_labels = await self.label_management_service.get_labels_by_user(user_id=user_id)
         
-        # 计算相似度并分类标签
-        potential_labels = self._categorize_labels_by_similarity(user_labels, content_vector)
+        # 根据关键词筛选标签
+        included_labels, remaining_labels = self._filter_labels_by_keywords(user_labels, representative_content)
         
-        # 选择最终标签
-        final_labels = [item[0] for item in potential_labels['high']]
+        # 计算相似度并分类剩余标签
+        potential_labels = self._categorize_labels_by_similarity(remaining_labels, content_vector)
+        
+        # 选择最终标签，优先选择包含关键词的标签
+        final_labels = included_labels.copy()
+        
+        # 如果还有剩余名额，添加高优先级标签
+        remaining_slots = max_labels - len(final_labels)
+        if remaining_slots > 0:
+            high_priority_labels = [item[0] for item in potential_labels['high']]
+            final_labels.extend(high_priority_labels[:remaining_slots])
+            remaining_slots -= len(high_priority_labels[:remaining_slots])
         
         # 如果高优先级标签不足，添加低优先级标签
-        remaining_slots = max_labels - len(final_labels)
         if remaining_slots > 0:
             final_labels.extend([item[0] for item in potential_labels['low'][:remaining_slots]])
         
         return final_labels
+    
+    def _filter_labels_by_keywords(self, labels: List[dict], content: str):
+        """根据关键词过滤标签
+        
+        Args:
+            labels: 标签列表
+            content: 内容文本
+            
+        Returns:
+            包含两个元素的元组: (包含关键词匹配的标签, 待进一步处理的标签)
+        """
+        
+        included_labels = []
+        remaining_labels = []
+        
+        for label in labels:
+            exclude_keywords = label.get('exclude_keywords', [])
+            include_keywords = label.get('include_keywords', [])
+            
+            # 检查排除关键词
+            should_exclude = False
+            if exclude_keywords:
+                for keyword in exclude_keywords:
+                    if keyword and keyword.strip() and keyword.lower() in content.lower():
+                        logger.info(f"标签 {label['name']} 因排除关键词 '{keyword}' 被过滤")
+                        should_exclude = True
+                        break
+            
+            # 如果标签应该被排除，则跳过后续处理
+            if should_exclude:
+                continue
+                
+            # 检查包含关键词
+            if include_keywords:
+                for keyword in include_keywords:
+                    if keyword and keyword.strip() and keyword.lower() in content.lower():
+                        included_labels.append(label)
+                        logger.info(f"标签 {label['name']} 因包含关键词 '{keyword}' 被优先选择")
+                        break
+                else:
+                    # 如果没有匹配到包含关键词，加入剩余标签列表
+                    remaining_labels.append(label)
+            else:
+                # 没有包含关键词的标签，加入剩余标签列表
+                remaining_labels.append(label)
+                
+        return included_labels, remaining_labels
+
     
     def _categorize_labels_by_similarity(self, labels:List[LabelModel], content_vector:List[float], high_threshold=0.7, low_threshold=0.25):
         """根据相似度对标签进行分类"""

@@ -2,12 +2,10 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, Union
 from bson import ObjectId
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 from app.utils.logging_utils import logger
 from app.infrastructure.external.cloudflare_ai_service import CloudflareAIService
 from app.service.label_service import LabelApplicationService
 from app.infrastructure.db.r2 import R2Storage
-from app.infrastructure.daos.content_dao import ContentDAO
 from app.service.user_service import UserContentMetaService
 
 # 内容处理基类
@@ -46,7 +44,15 @@ class ContentService(ABC):
     async def update_is_processed(self, content_id: ObjectId, is_processed: bool) -> bool:
         """更新处理状态"""
         return await self.content_dao.update_is_processed(content_id, is_processed)
-        
+
+    async def full_text_search(self, query_text: str, user_id: ObjectId=None) -> List[Dict]:
+        """全文搜索"""
+        return await self.content_dao.full_text_search(query_text=query_text, user_id=user_id)
+    
+    async def vector_search(self, query_vector: List[float], user_id: ObjectId=None) -> List[Dict]:
+        """向量搜索"""
+        return await self.content_dao.vector_search(query_vector=query_vector, user_id=user_id)
+
     @abstractmethod
     async def get_content_description(self, content: Dict, language: str = "zh-TW") -> Any:
         """生成内容描述信息，由子类实现，返回對應的 DescriptionModel"""
@@ -144,7 +150,7 @@ class ContentService(ABC):
             
             # 在內存中更新 content 對象
             content["description"] = description.model_dump()
-            
+            logger.info(f"内容{content_id} 描述: {content['description']}")
             await self.update_content_labels(content)
             await self.update_is_processed(content_id, True)
             logger.info(f"已完成{self.content_type}处理 ID: {content_id}")
@@ -156,15 +162,30 @@ class ContentService(ABC):
     
     async def update_content_labels(self, content: Dict) -> List[ObjectId]:
         """获取内容标签"""
+        def _get_representative_content(content_type, content):
+            if content_type == "image":
+                return content["description"]["ocr_text"]
+
+            elif content_type == "text":
+                return content["content"]
+            
+            elif (content_type == "file") or (content_type == "url"):
+                return content["description"]["summary"]
+            else:
+                raise ValueError(f"Unsupported content type: {content_type}")
+        
+        # 取得content meta data
         content_id = content["_id"]
+        representative_content = _get_representative_content(self.content_type, content) # 获取内容代表性文本(以使用include_keywords和exclude_keywords)
+        logger.info(f"内容{content_id} 代表性文本: {representative_content}")
         content_vector = content["description"]["summary_vector"]
         authorized_users = content["authorized_users"]
         content_type = self.content_type
         
-        logger.info(f"内容{content_id} 类型: {content_type} 授权用户: {authorized_users}")
         # 對於每個授權用戶，匹配其標籤
         for user_id in authorized_users:
-            labels = await self.label_application_service.match_user_labels(user_id, content_vector)
+            logger.info(f"内容{content_id} 类型: {content_type} 授权用户: {user_id}")
+            labels = await self.label_application_service.match_user_labels(user_id, representative_content, content_vector)
             label_ids = [label["_id"] for label in labels]
             label_names = [label["name"] for label in labels]
             logger.info(f"用户{user_id} 内容{content_id} 标签: {label_names}")

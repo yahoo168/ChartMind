@@ -43,18 +43,18 @@ class UrlService(ContentService):
             # 获取基本信息
             title = url_preview.get("title", '')
             thumbnail_url = url_preview.get("thumbnail_url", '')
-            summary = url_preview.get("description", '')
+            description = url_preview.get("description", '')
             
             # 若Url Preview包含description，則向量化，否則使用空列表
-            if summary:
-                summary_vector = await self.llm_service.get_embedding(summary)
+            if description:
+                summary_vector = await self.llm_service.get_embedding(title + description) # 將title和description合併向量化
             else:
                 summary_vector = []
             
             return UrlDescriptionModel(
                 auto_title=title,
                 thumbnail_url=thumbnail_url,
-                summary=summary,
+                summary=description,
                 summary_vector=summary_vector
             ) 
             
