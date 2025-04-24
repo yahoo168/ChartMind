@@ -45,9 +45,9 @@ class LabelManagementService:
         await self.dao.insert_one(label)
         return label
     
-    async def get_labels_by_user(self, user_id: str):
+    async def get_labels_by_user(self, user_id: str, contain_vector: bool = True):
         """获取用户的所有标签"""
-        return await self.dao.find_labels_by_user_id(user_id)
+        return await self.dao.find_labels_by_user_id(user_id, contain_vector)
     
     async def count_labels_by_user(self, user_id: str):
         """计算用户的标签数量"""

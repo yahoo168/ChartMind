@@ -13,7 +13,7 @@ from app.infrastructure.daos.text_daos import TextDAO
 
 from app.service.content_service import ContentService
 from app.service.user_service import UserContentMetaService
-
+from app.service.text_service import TextService
 from app.infrastructure.models.text_models import TextModel
 from app.infrastructure.db.r2 import download_to_temp
 
@@ -25,6 +25,7 @@ class FileService(ContentService):
         self.content_type = "file"
         self.content_dao = FileDAO()
         self.text_dao = TextDAO()
+        self.text_service = TextService()
         self.user_content_meta_service = UserContentMetaService()
     
     async def create_content(self, file_name: str, file_path: str, file_type: str, uploader_id: ObjectId, 
@@ -81,13 +82,14 @@ class FileService(ContentService):
     async def _process_file_text(self, file_url: str, file_type: str, uploader_id: ObjectId, authorized_users: list[ObjectId], upload_metadata: Dict[str, Any],
                               file_id: ObjectId):
         """处理文件文本提取，根据文件类型调用不同的处理函数"""
-        text_models = []
+        text_ids = []
+        url_ids = []
         
         # 根据文件类型选择不同的处理方法
         if file_type.lower() == "pdf":
             file_texts = await self._get_pdf_content(file_url)
         elif file_type.lower() in ["docx", "doc"]:
-            file_texts = await self.__get_word_content(file_url)
+            file_texts = await self._get_word_content(file_url)
         elif file_type.lower() in ["txt", "md"]:
             file_texts = await self._get_text_content(file_url)
         else:
@@ -97,17 +99,17 @@ class FileService(ContentService):
         
         # 创建文本模型
         for i in range(len(file_texts)):
-            text_model = TextModel(
-                content=file_texts[i],
+            result = await self.text_service.create_content(
+                text=file_texts[i],
                 authorized_users=authorized_users,
-                uploader=uploader_id,
-                metadata=MetadataModel(**upload_metadata),
-                parent_file=file_id, 
+                uploader_id=uploader_id,
+                upload_metadata=upload_metadata,
+                parent_file=file_id,
                 file_page_num=i+1
             )
-            text_models.append(text_model)
+            text_ids.append(result["text_id"])
+            url_ids.extend(result["url_ids"])
             
-        text_ids = await self.text_dao.insert_many(text_models)
         return text_ids, file_texts
     
     async def get_file_child_texts(self, file_id: ObjectId) -> List[str]:
@@ -135,7 +137,7 @@ class FileService(ContentService):
             await self.content_dao.update_child_texts(file_id, text_ids)
         
         file_text = '\n'.join(file_texts)[:10000]  # 限制不超过10000字，避免Token超限
-        
+
         # 获取通用分析结果
         analysis_result = await self.get_content_analysis(text=file_text, language=language)
         return FileDescriptionModel(

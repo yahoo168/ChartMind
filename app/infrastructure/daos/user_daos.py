@@ -44,8 +44,17 @@ class UserContentMetaDAO(MongodbBaseDAO):
         self.collection_name = "UserContentMeta"
         
     @ensure_initialized
-    async def find_user_content_meta(self, content_id: ObjectId):
-        return await self.collection.find({"content_id": content_id}).to_list(length=None)
+    async def find_user_content_meta(self, user_id: ObjectId, content_type: str, labels: list[ObjectId]=None, limit: int = None):
+        query = {
+            "user_id": user_id,
+            "content_type": content_type,
+            "is_deleted": {"$ne": True} # 不包含已删除的内容
+        }
+        # 只有当labels不为None且不为空列表时，才添加标签过滤条件
+        if labels is not None and len(labels) > 0:
+            query["labels"] = {"$in": labels}
+        
+        return await self.collection.find(query).to_list(length=limit)
     
     @ensure_initialized
     async def insert_one(self, user_content_meta_data: UserContentMetadataModel):

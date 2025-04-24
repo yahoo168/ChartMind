@@ -24,7 +24,8 @@ class TextService(ContentService):
         self.url_service = UrlService()
         self.user_content_meta_service = UserContentMetaService()
 
-    async def create_content(self, text: str, uploader_id: ObjectId, authorized_users: list[ObjectId], upload_metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+    async def create_content(self, text: str, uploader_id: ObjectId, authorized_users: list[ObjectId], upload_metadata: Dict[str, Any] = None, 
+                             parent_file: ObjectId = None, file_page_num: int = None) -> Dict[str, Any]:
         """创建文本内容，如果包含URL则也创建URL内容
         
         Args:
@@ -50,7 +51,8 @@ class TextService(ContentService):
                     authorized_users=authorized_users,
                     uploader=uploader_id,
                     metadata=MetadataModel(**upload_metadata),
-                    description=TextDescriptionModel()
+                    parent_file=parent_file,
+                    file_page_num=file_page_num
                 )
                 text_id = await self.content_dao.insert_one(text_model)
                 

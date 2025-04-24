@@ -106,11 +106,12 @@ class UserContentMetaService:
     def __init__(self):
         self.user_content_meta_dao = UserContentMetaDAO()
     
-    async def get_user_content_meta(self, content_id: ObjectId):
-        """获取用户内容元数据"""
-        return await self.user_content_meta_dao.find_user_content_meta(content_id)
+    async def get_user_content_ids(self, user_id: ObjectId, content_type: str, labels: list[ObjectId]=None, limit: int = None):
+        """获取用户内容ID"""
+        result = await self.user_content_meta_dao.find_user_content_meta(user_id, content_type, labels, limit=limit)
+        return [ObjectId(item["content_id"]) for item in result]
     
-    async def update_content_labels(self, user_id: ObjectId, content_id: ObjectId, content_type: str, label_ids: list[ObjectId]):
+    async def update_content_labels(self, user_id: ObjectId, content_id: ObjectId, content_type: str, label_ids: list[ObjectId]=[]):
         """更新内容标签"""
         return await self.user_content_meta_dao.update_content_labels(user_id, content_id, content_type, label_ids)
 

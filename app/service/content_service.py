@@ -7,6 +7,7 @@ from app.infrastructure.external.cloudflare_ai_service import CloudflareAIServic
 from app.service.label_service import LabelApplicationService
 from app.infrastructure.db.r2 import R2Storage
 from app.service.user_service import UserContentMetaService
+from app.utils.format_utils import count_words
 
 # 内容处理基类
 class ContentService(ABC):
@@ -33,6 +34,12 @@ class ContentService(ABC):
         """删除内容"""
         return await self.content_dao.delete_many(content_ids)
     
+    async def find_content_by_ids(self, content_ids: list[ObjectId]) -> List[Dict]:
+        """查找内容"""
+        return await self.content_dao.find(query={"_id": {"$in": content_ids}}, 
+                                           projection={"description.summary_vector": 0},
+                                           sort=[("metadata.created_timestamp", -1)])
+    
     async def find_unprocessed_content(self) -> List[Dict]:
         """查找未处理的内容"""
         return await self.content_dao.find_unprocessed_documents()
@@ -44,14 +51,6 @@ class ContentService(ABC):
     async def update_is_processed(self, content_id: ObjectId, is_processed: bool) -> bool:
         """更新处理状态"""
         return await self.content_dao.update_is_processed(content_id, is_processed)
-
-    async def full_text_search(self, query_text: str, user_id: ObjectId=None) -> List[Dict]:
-        """全文搜索"""
-        return await self.content_dao.full_text_search(query_text=query_text, user_id=user_id)
-    
-    async def vector_search(self, query_vector: List[float], user_id: ObjectId=None) -> List[Dict]:
-        """向量搜索"""
-        return await self.content_dao.vector_search(query_vector=query_vector, user_id=user_id)
 
     @abstractmethod
     async def get_content_description(self, content: Dict, language: str = "zh-TW") -> Any:
@@ -190,3 +189,85 @@ class ContentService(ABC):
             label_names = [label["name"] for label in labels]
             logger.info(f"用户{user_id} 内容{content_id} 标签: {label_names}")
             await self.user_content_meta_service.update_content_labels(user_id, content_id, content_type, label_ids)
+    
+    async def full_text_search(self, query_text: str, user_id: ObjectId, limit: int) -> List[Dict]:
+        """全文搜索"""
+        return await self.content_dao.full_text_search(query_text=query_text, user_id=user_id, limit=limit)
+    
+    async def vector_search(self, query_vector: List[float], user_id: ObjectId, limit: int) -> List[Dict]:
+        """向量搜索"""
+        return await self.content_dao.vector_search(query_vector=query_vector, user_id=user_id, limit=limit)
+
+    async def smart_search(self, query_text: str, user_id: ObjectId, limit: int = 10, hybrid_weight: float = 0.7) -> List[Dict]:
+        """
+        智能搜索函数，根据查询文本长度选择搜索方式并优化结果排序
+        - 10字以下：混合搜索策略，结合全文搜索和向量搜索结果
+        - 10字以上：直接使用向量搜索
+        
+        参数:
+            query_text: 查询文本
+            user_id: 用户ID
+            limit: 需要返回的结果数量
+            hybrid_weight: 全文搜索结果的权重(0-1)，向量搜索权重为(1-hybrid_weight)
+        
+        返回:
+            搜索结果列表
+        """
+        # 预先计算向量嵌入，避免重复计算
+        query_vector = await self.llm_service.get_embedding(query_text)
+        
+        if count_words(query_text) > 10:
+            # 长查询直接使用向量搜索
+            results = await self.vector_search(query_vector, user_id, limit)
+        
+        else:
+            # 短查询使用混合搜索策略
+            text_results = await self.full_text_search(query_text, user_id, limit)
+            
+            # 无论全文搜索结果如何，都进行向量搜索以获得更全面的结果
+            vector_results = await self.vector_search(query_vector, user_id, limit)
+            
+            # 合并并重新排序结果
+            results = []
+            text_result_ids = {str(item["_id"]): i for i, item in enumerate(text_results)}
+            vector_result_ids = {str(item["_id"]): i for i, item in enumerate(vector_results)}
+            
+            # 所有出现在结果中的文档ID
+            all_doc_ids = set(text_result_ids.keys()) | set(vector_result_ids.keys())
+            
+            # 计算混合分数并排序
+            scored_results = []
+            for doc_id in all_doc_ids:
+                # 初始化分数
+                text_score = 0
+                vector_score = 0
+                
+                # 获取文档
+                doc = None
+                
+                # 如果在全文搜索结果中
+                if doc_id in text_result_ids:
+                    idx = text_result_ids[doc_id]
+                    doc = text_results[idx]
+                    # 根据排名计算分数 (排名越靠前分数越高)
+                    text_score = 1.0 - (idx / len(text_results)) if len(text_results) > 0 else 0
+                
+                # 如果在向量搜索结果中
+                if doc_id in vector_result_ids:
+                    idx = vector_result_ids[doc_id]
+                    if doc is None:
+                        doc = vector_results[idx]
+                    # 使用相似度分数
+                    vector_score = vector_results[idx].get("similarity_score", 0)
+                
+                # 计算混合分数
+                hybrid_score = (hybrid_weight * text_score) + ((1 - hybrid_weight) * vector_score)
+                
+                # 添加混合分数到文档
+                doc["hybrid_score"] = hybrid_score
+                scored_results.append(doc)
+            
+            # 按混合分数排序
+            results = sorted(scored_results, key=lambda x: x.get("hybrid_score", 0), reverse=True)
+        
+        return results[:limit]  # 返回指定数量的结果

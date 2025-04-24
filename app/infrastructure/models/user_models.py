@@ -21,10 +21,12 @@ class UserContentMetadataModel(BaseModel):
     content_id: ObjectId  # 可以是文本、文档或文件的ID
     content_type: str
     labels: List[ObjectId] = []
+    is_deleted: bool = False
+    is_favorite: bool = False
     
     # 添加最近读取时间戳
     last_read_timestamp: Optional[datetime] = None
-    read_count: int = 0  # 可选：记录阅读次数
+    read_count: int = 0  # 记录阅读次数
     
     created_timestamp: datetime = datetime.now(timezone.utc)
     updated_timestamp: datetime = datetime.now(timezone.utc)

@@ -14,8 +14,11 @@ class LabelDAO(MongodbBaseDAO):
         return inserted_id
     
     @ensure_initialized
-    async def find_labels_by_user_id(self, user_id: str):
-        return await self.collection.find({"user_id": ObjectId(user_id)}).to_list(length=None)
+    async def find_labels_by_user_id(self, user_id: str, contain_vector: bool = True):
+        if contain_vector:
+            return await self.collection.find({"user_id": ObjectId(user_id)}).to_list(length=None)
+        else:
+            return await self.collection.find({"user_id": ObjectId(user_id)}, {"vector": 0}).to_list(length=None)
         # return self.convert_objectid_to_str(data)
     
     @ensure_initialized

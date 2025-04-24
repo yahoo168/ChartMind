@@ -45,11 +45,14 @@ class UrlService(ContentService):
             thumbnail_url = url_preview.get("thumbnail_url", '')
             description = url_preview.get("description", '')
             
-            # 若Url Preview包含description，則向量化，否則使用空列表
-            if description:
-                summary_vector = await self.llm_service.get_embedding(title + description) # 將title和description合併向量化
+            # 即使没有描述，也使用标题或URL本身进行向量化，确保返回正确维度的向量
+            if description or title:
+                text_to_embed = title + description  # 将title和description合并向量化
             else:
-                summary_vector = []
+                # 如果没有标题和描述，使用URL本身
+                text_to_embed = content["url"]
+                
+            summary_vector = await self.llm_service.get_embedding(text_to_embed)
             
             return UrlDescriptionModel(
                 auto_title=title,
@@ -60,4 +63,6 @@ class UrlService(ContentService):
             
         except Exception as e:
             logger.error(f"获取URL描述时出错: {e}")
-            return UrlDescriptionModel()
+            # 创建一个空向量，确保维度正确（3072维）
+            empty_vector = [0.0] * 3072  # 创建一个全零向量，维度与模型输出匹配
+            return UrlDescriptionModel(summary_vector=empty_vector)

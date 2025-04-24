@@ -92,9 +92,9 @@ async def get_url_preview(url):
     """
     # 初始化結果
     result = {
-        'title': None,
-        'thumbnail_url': None,
-        'description': None,
+        'title': '',
+        'thumbnail_url': '',
+        'description': '',
     }
     
     # 檢查是否為YouTube URL
@@ -178,10 +178,6 @@ async def _get_twitter_preview(url, twitter_match, result):
         # 如果oEmbed API也失敗，我們至少有基本信息
         result['error'] = f"獲取Twitter信息時出錯: {str(e)}"
     
-    # 嘗試構建可能的縮圖URL（Twitter的媒體URL有一定規律）
-    # 注意：這只是一個猜測，可能不準確
-    result['thumbnail_url'] = None
-    
     return result
 
 async def _get_general_preview(url, result):
@@ -196,9 +192,9 @@ async def _get_general_preview(url, result):
                 if response.status != 200:
                     return {
                         'error': f"HTTP錯誤: {response.status}",
-                        'thumbnail_url': None,
-                        'title': None,
-                        'description': None,
+                        'thumbnail_url': '',
+                        'title': '',
+                        'description': '',
                         'url': url
                     }
                 
@@ -214,9 +210,9 @@ async def _get_general_preview(url, result):
     except Exception as e:
         return {
             'error': str(e),
-            'thumbnail_url': None,
-            'title': None,
-            'description': None,
+            'thumbnail_url': '',
+            'title': '',
+            'description': '',
             'url': url
         }
 

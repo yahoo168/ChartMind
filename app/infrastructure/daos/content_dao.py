@@ -88,11 +88,11 @@ class ContentDAO(MongodbBaseDAO, Generic[T]):
         return result
     
     @ensure_initialized
-    async def full_text_search(self, query_text, user_id=None, limit=10, min_score=0.5):
+    async def full_text_search(self, query_text, user_id, limit, min_score=0.5):
         """全文搜索方法"""
         return await super().full_text_search(query_text, limit, user_id, min_score)
     
     @ensure_initialized
-    async def vector_search(self, query_vector, user_id=None, limit=10, num_candidates=100, min_score=0):
+    async def vector_search(self, query_vector, user_id, limit, num_candidates=100, min_score=0):
         """向量搜索方法"""
         return await super().vector_search(query_vector, limit, user_id, num_candidates, min_score)
